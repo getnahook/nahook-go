@@ -268,6 +268,7 @@ type CreatePortalSessionOptions struct {
 // ── Internal HTTP client ────────────────────────────────────────────────────
 
 // HTTPClient is the internal HTTP client shared by the client and management packages.
+// Internal: not part of the public API.
 type HTTPClient struct {
 	token   string
 	baseURL string
@@ -277,6 +278,7 @@ type HTTPClient struct {
 }
 
 // HTTPClientConfig configures the internal HTTP client.
+// Internal: not part of the public API.
 type HTTPClientConfig struct {
 	Token   string
 	BaseURL string
@@ -285,6 +287,7 @@ type HTTPClientConfig struct {
 }
 
 // NewHTTPClient creates a new internal HTTP client.
+// Internal: not part of the public API.
 func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
@@ -307,6 +310,7 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 }
 
 // RequestOptions describes an HTTP request to the Nahook API.
+// Internal: not part of the public API.
 type RequestOptions struct {
 	Method string
 	Path   string
@@ -486,6 +490,7 @@ func calculateDelay(attempt int, retryAfterMs int) time.Duration {
 }
 
 // PathEncode encodes a path segment for use in URLs.
+// Internal: not part of the public API.
 func PathEncode(s string) string {
 	return url.PathEscape(s)
 }
