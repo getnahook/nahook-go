@@ -127,6 +127,9 @@ func TestTrigger(t *testing.T) {
 		if body["payload"] == nil {
 			t.Error("expected payload in body")
 		}
+		if _, hasKey := body["idempotencyKey"]; hasKey {
+			t.Error("trigger should NOT include idempotencyKey in body")
+		}
 
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -192,6 +195,16 @@ func TestSendBatch(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		items, ok := body["items"].([]interface{})
+		if !ok {
+			t.Fatal("expected body to have 'items' array wrapper")
+		}
+		if len(items) != 1 {
+			t.Errorf("expected 1 item in batch, got %d", len(items))
+		}
+
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"items": []map[string]interface{}{
@@ -223,6 +236,16 @@ func TestTriggerBatch(t *testing.T) {
 		}
 		if r.URL.Path != "/api/ingest/event/batch" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		items, ok := body["items"].([]interface{})
+		if !ok {
+			t.Fatal("expected body to have 'items' array wrapper")
+		}
+		if len(items) != 1 {
+			t.Errorf("expected 1 item in batch, got %d", len(items))
 		}
 
 		w.WriteHeader(http.StatusAccepted)
