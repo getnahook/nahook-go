@@ -30,7 +30,7 @@ import (
 )
 
 func main() {
-    c, err := client.New("nhk_your_api_key",
+    c, err := client.New("nhk_us_your_api_key",
         client.WithTimeout(10*time.Second),
         client.WithRetries(3),
     )
