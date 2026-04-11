@@ -24,9 +24,10 @@ func (r *SubscriptionsResource) List(ctx context.Context, workspaceID, endpointI
 	return &nahook.ListResult[nahook.Subscription]{Data: data}, nil
 }
 
-// Create creates a new subscription on an endpoint.
-func (r *SubscriptionsResource) Create(ctx context.Context, workspaceID, endpointID string, opts nahook.CreateSubscriptionOptions) (*nahook.Subscription, error) {
-	var result nahook.Subscription
+// Create subscribes an endpoint to one or more event types.
+// Returns the number of event types successfully subscribed.
+func (r *SubscriptionsResource) Create(ctx context.Context, workspaceID, endpointID string, opts nahook.CreateSubscriptionOptions) (*nahook.SubscribeResult, error) {
+	var result nahook.SubscribeResult
 	err := r.http.Request(ctx, nahook.RequestOptions{
 		Method: "POST",
 		Path:   "/management/v1/workspaces/" + nahook.PathEncode(workspaceID) + "/endpoints/" + nahook.PathEncode(endpointID) + "/subscriptions",
