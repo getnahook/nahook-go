@@ -209,6 +209,55 @@ func TestHTTPClient_Request_APIError(t *testing.T) {
 	}
 }
 
+func TestResolveBaseURL_US(t *testing.T) {
+	got := ResolveBaseURL("nhk_us_abc123")
+	if got != "https://us.api.nahook.com" {
+		t.Errorf("expected https://us.api.nahook.com, got %s", got)
+	}
+}
+
+func TestResolveBaseURL_EU(t *testing.T) {
+	got := ResolveBaseURL("nhk_eu_abc123")
+	if got != "https://eu.api.nahook.com" {
+		t.Errorf("expected https://eu.api.nahook.com, got %s", got)
+	}
+}
+
+func TestResolveBaseURL_AP(t *testing.T) {
+	got := ResolveBaseURL("nhk_ap_abc123")
+	if got != "https://ap.api.nahook.com" {
+		t.Errorf("expected https://ap.api.nahook.com, got %s", got)
+	}
+}
+
+func TestResolveBaseURL_UnknownRegion(t *testing.T) {
+	got := ResolveBaseURL("nhk_zz_abc123")
+	if got != DefaultBaseURL {
+		t.Errorf("expected %s for unknown region, got %s", DefaultBaseURL, got)
+	}
+}
+
+func TestBaseURL_OverridesRegionResolution(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	}))
+	defer srv.Close()
+
+	// Key has "eu" region, but explicit BaseURL should override
+	c := NewHTTPClient(HTTPClientConfig{
+		Token:   "nhk_eu_abc123",
+		BaseURL: srv.URL,
+	})
+	var result map[string]string
+	err := c.Request(context.Background(), RequestOptions{Method: "GET", Path: "/test"}, &result)
+	if err != nil {
+		t.Fatalf("expected request to explicit BaseURL to succeed, got: %v", err)
+	}
+	if result["ok"] != "true" {
+		t.Errorf("expected ok=true from override server, got %v", result)
+	}
+}
+
 func TestHTTPClient_DefaultBaseURL(t *testing.T) {
 	c := NewHTTPClient(HTTPClientConfig{Token: "test"})
 	// We can't easily test the default URL directly, but we verify it was set
