@@ -27,6 +27,25 @@ const (
 	maxDelayMs      = 10_000
 )
 
+// regionBaseURLs maps the region slug embedded in API keys to base URLs.
+var regionBaseURLs = map[string]string{
+	"us": "https://us.api.nahook.com",
+	"eu": "https://eu.api.nahook.com",
+	"ap": "https://ap.api.nahook.com",
+}
+
+// ResolveBaseURL extracts the region slug from an nhk_ API key and returns the
+// regional base URL. Falls back to DefaultBaseURL for legacy keys.
+func ResolveBaseURL(apiKey string) string {
+	if len(apiKey) >= 7 && apiKey[:4] == "nhk_" && apiKey[6] == '_' {
+		slug := apiKey[4:6]
+		if u, ok := regionBaseURLs[slug]; ok {
+			return u
+		}
+	}
+	return DefaultBaseURL
+}
+
 // ── Error types ─────────────────────────────────────────────────────────────
 
 // APIError represents an error response from the Nahook API.
@@ -291,7 +310,7 @@ type HTTPClientConfig struct {
 func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
-		baseURL = DefaultBaseURL
+		baseURL = ResolveBaseURL(cfg.Token)
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
