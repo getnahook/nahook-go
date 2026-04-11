@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 func TestNew_InvalidAPIKey(t *testing.T) {

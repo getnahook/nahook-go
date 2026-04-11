@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 // Client is the Nahook ingestion client.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 func TestNew_InvalidToken(t *testing.T) {

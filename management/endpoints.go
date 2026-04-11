@@ -3,7 +3,7 @@ package management
 import (
 	"context"
 
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 // EndpointsResource provides operations on webhook endpoints.
