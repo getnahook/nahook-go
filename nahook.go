@@ -289,6 +289,39 @@ type CreatePortalSessionOptions struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// Environment represents a workspace environment.
+type Environment struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	IsDefault bool   `json:"isDefault"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// CreateEnvironmentOptions configures a new environment.
+type CreateEnvironmentOptions struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// UpdateEnvironmentOptions configures an environment update.
+type UpdateEnvironmentOptions struct {
+	Name *string `json:"name,omitempty"`
+}
+
+// EventTypeVisibility represents the visibility of an event type in an environment.
+type EventTypeVisibility struct {
+	EventTypeID   string `json:"eventTypeId"`
+	EventTypeName string `json:"eventTypeName"`
+	Published     bool   `json:"published"`
+}
+
+// SetVisibilityOptions configures event type visibility in an environment.
+type SetVisibilityOptions struct {
+	Published bool `json:"published"`
+}
+
 // ── Internal HTTP client ────────────────────────────────────────────────────
 
 // HTTPClient is the internal HTTP client shared by the client and management packages.
