@@ -470,7 +470,7 @@ func TestSubscriptions_List(t *testing.T) {
 		assertPath(t, r, "/management/v1/workspaces/ws_123/endpoints/ep_1/subscriptions")
 
 		json.NewEncoder(w).Encode([]map[string]interface{}{
-			{"id": "sub_1", "endpointId": "ep_1", "eventTypeId": "et_1"},
+			{"id": "sub_1", "eventTypeId": "et_1", "eventTypeName": "order.created", "createdAt": "2026-04-10T12:00:00Z"},
 		})
 	}))
 	defer srv.Close()
@@ -483,6 +483,9 @@ func TestSubscriptions_List(t *testing.T) {
 	if len(result.Data) != 1 {
 		t.Fatalf("expected 1 subscription, got %d", len(result.Data))
 	}
+	if result.Data[0].EventTypeName != "order.created" {
+		t.Errorf("expected eventTypeName order.created, got %s", result.Data[0].EventTypeName)
+	}
 }
 
 func TestSubscriptions_Create(t *testing.T) {
@@ -492,26 +495,26 @@ func TestSubscriptions_Create(t *testing.T) {
 
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["eventTypeId"] != "et_1" {
-			t.Errorf("unexpected eventTypeId: %v", body["eventTypeId"])
+		ids, ok := body["eventTypeIds"].([]interface{})
+		if !ok || len(ids) != 1 || ids[0] != "et_1" {
+			t.Errorf("unexpected eventTypeIds: %v", body["eventTypeIds"])
 		}
 
-		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id": "sub_new", "endpointId": "ep_1", "eventTypeId": "et_1",
+			"subscribed": 1,
 		})
 	}))
 	defer srv.Close()
 
 	mgmt := newTestClient(t, srv.URL)
 	result, err := mgmt.Subscriptions.Create(context.Background(), "ws_123", "ep_1", nahook.CreateSubscriptionOptions{
-		EventTypeID: "et_1",
+		EventTypeIDs: []string{"et_1"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.ID != "sub_new" {
-		t.Errorf("expected id sub_new, got %s", result.ID)
+	if result.Subscribed != 1 {
+		t.Errorf("expected subscribed 1, got %d", result.Subscribed)
 	}
 }
 

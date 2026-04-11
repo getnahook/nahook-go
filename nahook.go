@@ -207,10 +207,15 @@ type Application struct {
 
 // Subscription represents an event type subscription on an endpoint.
 type Subscription struct {
-	ID          string `json:"id"`
-	EndpointID  string `json:"endpointId"`
-	EventTypeID string `json:"eventTypeId"`
-	CreatedAt   string `json:"createdAt"`
+	ID            string `json:"id"`
+	EventTypeID   string `json:"eventTypeId"`
+	EventTypeName string `json:"eventTypeName"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+// SubscribeResult is the response from subscribing an endpoint to event types.
+type SubscribeResult struct {
+	Subscribed int `json:"subscribed"`
 }
 
 // PortalSession represents a portal session for developer self-service.
@@ -274,9 +279,9 @@ type UpdateApplicationOptions struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// CreateSubscriptionOptions configures a new subscription.
+// CreateSubscriptionOptions configures a new subscription (bulk).
 type CreateSubscriptionOptions struct {
-	EventTypeID string `json:"eventTypeId"`
+	EventTypeIDs []string `json:"eventTypeIds"`
 }
 
 // CreatePortalSessionOptions configures a new portal session.
