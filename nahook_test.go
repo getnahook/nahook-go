@@ -309,15 +309,19 @@ func TestCalculateDelay(t *testing.T) {
 		t.Errorf("expected 5000ms, got %dms", d.Milliseconds())
 	}
 
-	// Without retryAfter, should return jittered exponential backoff
-	d = calculateDelay(0, 0)
-	if d.Milliseconds() > 500 {
-		t.Errorf("attempt 0 delay should be <= 500ms, got %dms", d.Milliseconds())
+	// Without retryAfter, jittered backoff should stay within [0, exponentialCap]
+	for i := 0; i < 50; i++ {
+		d = calculateDelay(0, 0) // cap = min(10000, 500*1) = 500
+		if d.Milliseconds() < 0 || d.Milliseconds() > 500 {
+			t.Errorf("attempt 0 delay should be in [0, 500]ms, got %dms", d.Milliseconds())
+		}
 	}
 
-	d = calculateDelay(5, 0)
-	if d.Milliseconds() > 10000 {
-		t.Errorf("delay should be capped at 10000ms, got %dms", d.Milliseconds())
+	for i := 0; i < 50; i++ {
+		d = calculateDelay(5, 0) // cap = min(10000, 500*32) = 10000
+		if d.Milliseconds() < 0 || d.Milliseconds() > 10000 {
+			t.Errorf("attempt 5 delay should be in [0, 10000]ms, got %dms", d.Milliseconds())
+		}
 	}
 }
 

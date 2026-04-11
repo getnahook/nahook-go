@@ -21,7 +21,7 @@ func TestNew_InvalidAPIKey(t *testing.T) {
 }
 
 func TestNew_ValidAPIKey(t *testing.T) {
-	c, err := New("nhk_test123")
+	c, err := New("nhk_us_test123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestSend(t *testing.T) {
 		if r.URL.Path != "/api/ingest/ep_123" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		if r.Header.Get("Authorization") != "Bearer nhk_test123" {
+		if r.Header.Get("Authorization") != "Bearer nhk_us_test123" {
 			t.Errorf("unexpected auth header: %s", r.Header.Get("Authorization"))
 		}
 		if r.Header.Get("Content-Type") != "application/json" {
@@ -66,7 +66,7 @@ func TestSend(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	result, err := c.Send(context.Background(), "ep_123", nahook.SendOptions{
 		Payload: map[string]interface{}{"test": true},
 	})
@@ -100,7 +100,7 @@ func TestSend_CustomIdempotencyKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	result, err := c.Send(context.Background(), "ep_123", nahook.SendOptions{
 		Payload:        map[string]interface{}{"test": true},
 		IdempotencyKey: "my-key-123",
@@ -140,7 +140,7 @@ func TestTrigger(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	result, err := c.Trigger(context.Background(), "order.paid", nahook.TriggerOptions{
 		Payload: map[string]interface{}{"orderId": "123"},
 	})
@@ -176,7 +176,7 @@ func TestTrigger_WithMetadata(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	_, err := c.Trigger(context.Background(), "order.paid", nahook.TriggerOptions{
 		Payload:  map[string]interface{}{"orderId": "123"},
 		Metadata: map[string]string{"region": "us-east-1"},
@@ -214,7 +214,7 @@ func TestSendBatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	result, err := c.SendBatch(context.Background(), []nahook.SendBatchItem{
 		{EndpointID: "ep_123", Payload: map[string]interface{}{"test": true}},
 	})
@@ -257,7 +257,7 @@ func TestTriggerBatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	result, err := c.TriggerBatch(context.Background(), []nahook.TriggerBatchItem{
 		{EventType: "order.paid", Payload: map[string]interface{}{"orderId": "123"}},
 	})
@@ -281,7 +281,7 @@ func TestSend_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New("nhk_test123", WithBaseURL(srv.URL))
+	c, _ := New("nhk_us_test123", WithBaseURL(srv.URL))
 	_, err := c.Send(context.Background(), "ep_missing", nahook.SendOptions{
 		Payload: map[string]interface{}{},
 	})
@@ -315,7 +315,7 @@ func TestSend_NoContentTypeOnGET(t *testing.T) {
 
 	// Use the HTTP client directly to test GET without Content-Type
 	httpClient := nahook.NewHTTPClient(nahook.HTTPClientConfig{
-		Token:   "nhk_test123",
+		Token:   "nhk_us_test123",
 		BaseURL: srv.URL,
 	})
 	var result []interface{}
