@@ -331,6 +331,155 @@ func TestSubscriptions(t *testing.T) {
 	}
 }
 
+func TestEnvironmentsCRUD(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+	name := uniqueName()
+
+	// Create
+	created, err := client.Environments.Create(ctx, wsID, nahook.CreateEnvironmentOptions{
+		Name: name,
+		Slug: "env-" + fmt.Sprintf("%d", time.Now().UnixMilli()),
+	})
+	if err != nil {
+		t.Fatalf("Create environment: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("Create environment returned empty ID")
+	}
+	if created.Name != name {
+		t.Fatalf("expected name %q, got %q", name, created.Name)
+	}
+
+	// List (should have at least 2: the default + our new one)
+	list, err := client.Environments.List(ctx, wsID)
+	if err != nil {
+		t.Fatalf("List environments: %v", err)
+	}
+	if len(list.Data) < 2 {
+		t.Fatalf("expected at least 2 environments (default + created), got %d", len(list.Data))
+	}
+	found := false
+	for _, env := range list.Data {
+		if env.ID == created.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("created environment %s not found in list", created.ID)
+	}
+
+	// Get
+	got, err := client.Environments.Get(ctx, wsID, created.ID)
+	if err != nil {
+		t.Fatalf("Get environment: %v", err)
+	}
+	if got.Name != name {
+		t.Fatalf("Get returned name %q, expected %q", got.Name, name)
+	}
+
+	// Update
+	updatedName := name + ".updated"
+	updated, err := client.Environments.Update(ctx, wsID, created.ID, nahook.UpdateEnvironmentOptions{
+		Name: &updatedName,
+	})
+	if err != nil {
+		t.Fatalf("Update environment: %v", err)
+	}
+	if updated.Name != updatedName {
+		t.Fatalf("Update did not apply name: got %q, want %q", updated.Name, updatedName)
+	}
+
+	// Delete
+	err = client.Environments.Delete(ctx, wsID, created.ID)
+	if err != nil {
+		t.Fatalf("Delete environment: %v", err)
+	}
+
+	// Verify 404
+	_, err = client.Environments.Get(ctx, wsID, created.ID)
+	if err == nil {
+		t.Fatal("expected error after delete, got nil")
+	}
+	var apiErr *nahook.APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsNotFound() {
+		t.Fatalf("expected 404 after delete, got: %v", err)
+	}
+}
+
+func TestEventTypeVisibility(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+	suffix := uniqueName()
+
+	// Create an environment
+	env, err := client.Environments.Create(ctx, wsID, nahook.CreateEnvironmentOptions{
+		Name: "vis-test-" + suffix,
+		Slug: "vis-" + fmt.Sprintf("%d", time.Now().UnixMilli()),
+	})
+	if err != nil {
+		t.Fatalf("Create environment for visibility test: %v", err)
+	}
+	defer func() {
+		_ = client.Environments.Delete(ctx, wsID, env.ID)
+	}()
+
+	// Create an event type
+	et, err := client.EventTypes.Create(ctx, wsID, nahook.CreateEventTypeOptions{
+		Name:        suffix,
+		Description: "visibility test event type",
+	})
+	if err != nil {
+		t.Fatalf("Create event type for visibility test: %v", err)
+	}
+	defer func() {
+		_ = client.EventTypes.Delete(ctx, wsID, et.ID)
+	}()
+
+	// List visibility
+	visList, err := client.Environments.ListEventTypeVisibility(ctx, wsID, env.ID)
+	if err != nil {
+		t.Fatalf("ListEventTypeVisibility: %v", err)
+	}
+	// The created event type should appear in the list
+	found := false
+	for _, v := range visList.Data {
+		if v.EventTypeID == et.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("event type %s not found in visibility list", et.ID)
+	}
+
+	// Set published=true
+	vis, err := client.Environments.SetEventTypeVisibility(ctx, wsID, env.ID, et.ID, nahook.SetVisibilityOptions{
+		Published: true,
+	})
+	if err != nil {
+		t.Fatalf("SetEventTypeVisibility (true): %v", err)
+	}
+	if !vis.Published {
+		t.Fatal("expected published=true after setting")
+	}
+	if vis.EventTypeID != et.ID {
+		t.Fatalf("expected eventTypeId %q, got %q", et.ID, vis.EventTypeID)
+	}
+
+	// Set published=false
+	vis, err = client.Environments.SetEventTypeVisibility(ctx, wsID, env.ID, et.ID, nahook.SetVisibilityOptions{
+		Published: false,
+	})
+	if err != nil {
+		t.Fatalf("SetEventTypeVisibility (false): %v", err)
+	}
+	if vis.Published {
+		t.Fatal("expected published=false after setting")
+	}
+}
+
 func TestAuthError(t *testing.T) {
 	apiURL := os.Getenv("NAHOOK_TEST_API_URL")
 	wsID := os.Getenv("NAHOOK_TEST_WORKSPACE_ID")

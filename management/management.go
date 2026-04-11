@@ -17,6 +17,7 @@ type Management struct {
 	Applications   *ApplicationsResource
 	Subscriptions  *SubscriptionsResource
 	PortalSessions *PortalSessionsResource
+	Environments   *EnvironmentsResource
 }
 
 // Option configures the Management client.
@@ -62,5 +63,6 @@ func New(token string, opts ...Option) (*Management, error) {
 		Applications:   &ApplicationsResource{http: http},
 		Subscriptions:  &SubscriptionsResource{http: http},
 		PortalSessions: &PortalSessionsResource{http: http},
+		Environments:   &EnvironmentsResource{http: http},
 	}, nil
 }
