@@ -1,4 +1,4 @@
-module github.com/jmatom/nahook-go
+module github.com/getnahook/nahook-go
 
 go 1.21
 

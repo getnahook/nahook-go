@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 // Management is the Nahook management API client.

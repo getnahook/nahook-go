@@ -5,7 +5,7 @@ Official Go SDK for [Nahook](https://nahook.com) — the webhook delivery platfo
 ## Installation
 
 ```bash
-go get github.com/jmatom/nahook-go
+go get github.com/getnahook/nahook-go
 ```
 
 Requires Go 1.21+.
@@ -25,8 +25,8 @@ import (
     "log"
     "time"
 
-    nahook "github.com/jmatom/nahook-go"
-    "github.com/jmatom/nahook-go/client"
+    nahook "github.com/getnahook/nahook-go"
+    "github.com/getnahook/nahook-go/client"
 )
 
 func main() {
@@ -120,8 +120,8 @@ import (
     "fmt"
     "log"
 
-    nahook "github.com/jmatom/nahook-go"
-    "github.com/jmatom/nahook-go/management"
+    nahook "github.com/getnahook/nahook-go"
+    "github.com/getnahook/nahook-go/management"
 )
 
 func main() {

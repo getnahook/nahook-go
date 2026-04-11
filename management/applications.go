@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 
-	nahook "github.com/jmatom/nahook-go"
+	nahook "github.com/getnahook/nahook-go"
 )
 
 // ApplicationsResource provides operations on applications.
