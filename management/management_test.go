@@ -41,6 +41,9 @@ func TestNew_ValidToken(t *testing.T) {
 	if mgmt.PortalSessions == nil {
 		t.Error("expected PortalSessions to be initialized")
 	}
+	if mgmt.Environments == nil {
+		t.Error("expected Environments to be initialized")
+	}
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────────────
@@ -593,6 +596,195 @@ func TestPortalSessions_CreateWithOptions(t *testing.T) {
 	}
 	if result.Code != "abc123" {
 		t.Errorf("expected code abc123, got %s", result.Code)
+	}
+}
+
+// ── Environments ───────────────────────────────────────────────────────────
+
+func TestEnvironments_List(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments")
+		assertAuth(t, r, "nhm_test123")
+
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": "env_1", "name": "Production", "slug": "production", "isDefault": true},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Environments.List(context.Background(), "ws_123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Data) != 1 {
+		t.Fatalf("expected 1 environment, got %d", len(result.Data))
+	}
+	if result.Data[0].ID != "env_1" {
+		t.Errorf("expected id env_1, got %s", result.Data[0].ID)
+	}
+	if result.Data[0].Name != "Production" {
+		t.Errorf("expected name Production, got %s", result.Data[0].Name)
+	}
+	if result.Data[0].Slug != "production" {
+		t.Errorf("expected slug production, got %s", result.Data[0].Slug)
+	}
+	if !result.Data[0].IsDefault {
+		t.Error("expected isDefault to be true")
+	}
+}
+
+func TestEnvironments_Create(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "POST")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments")
+		assertContentType(t, r)
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["name"] != "Staging" {
+			t.Errorf("unexpected name: %v", body["name"])
+		}
+		if body["slug"] != "staging" {
+			t.Errorf("unexpected slug: %v", body["slug"])
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "env_new", "name": "Staging", "slug": "staging", "isDefault": false,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Environments.Create(context.Background(), "ws_123", nahook.CreateEnvironmentOptions{
+		Name: "Staging",
+		Slug: "staging",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "env_new" {
+		t.Errorf("expected id env_new, got %s", result.ID)
+	}
+}
+
+func TestEnvironments_Get(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments/env_1")
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "env_1", "name": "Production", "slug": "production", "isDefault": true,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Environments.Get(context.Background(), "ws_123", "env_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "env_1" {
+		t.Errorf("expected id env_1, got %s", result.ID)
+	}
+}
+
+func TestEnvironments_Update(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "PATCH")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments/env_1")
+		assertContentType(t, r)
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "env_1", "name": "Updated Env", "slug": "production", "isDefault": true,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	name := "Updated Env"
+	result, err := mgmt.Environments.Update(context.Background(), "ws_123", "env_1", nahook.UpdateEnvironmentOptions{
+		Name: &name,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Name != "Updated Env" {
+		t.Errorf("expected Updated Env, got %s", result.Name)
+	}
+}
+
+func TestEnvironments_Delete(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "DELETE")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments/env_1")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	err := mgmt.Environments.Delete(context.Background(), "ws_123", "env_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEnvironments_ListEventTypeVisibility(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments/env_1/event-types")
+
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"eventTypeName": "order.created", "published": true},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Environments.ListEventTypeVisibility(context.Background(), "ws_123", "env_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Data) != 1 {
+		t.Fatalf("expected 1 visibility entry, got %d", len(result.Data))
+	}
+	if result.Data[0].EventTypeName != "order.created" {
+		t.Errorf("expected eventTypeName order.created, got %s", result.Data[0].EventTypeName)
+	}
+}
+
+func TestEnvironments_SetEventTypeVisibility(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "PUT")
+		assertPath(t, r, "/management/v1/workspaces/ws_123/environments/env_1/event-types/evt_1/visibility")
+		assertContentType(t, r)
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["published"] != true {
+			t.Errorf("unexpected published: %v", body["published"])
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"eventTypeName": "order.created", "published": true,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Environments.SetEventTypeVisibility(context.Background(), "ws_123", "env_1", "evt_1", nahook.SetVisibilityOptions{
+		Published: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.EventTypeName != "order.created" {
+		t.Errorf("expected eventTypeName order.created, got %s", result.EventTypeName)
+	}
+	if !result.Published {
+		t.Error("expected published to be true")
 	}
 }
 
