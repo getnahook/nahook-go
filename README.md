@@ -285,6 +285,42 @@ func main() {
         log.Fatal(err)
     }
     fmt.Printf("Portal URL: %s\n", session2.URL)
+
+    // ── Environments ──
+
+    // List environments
+    envs, err := mgmt.Environments.List(ctx, workspaceID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, env := range envs.Data {
+        fmt.Printf("Env: %s (%s, default: %v)\n", env.Name, env.Slug, env.IsDefault)
+    }
+
+    // Create an environment
+    newEnv, err := mgmt.Environments.Create(ctx, workspaceID, nahook.CreateEnvironmentOptions{
+        Name: "Staging",
+        Slug: "staging",
+    })
+
+    // Update
+    updatedName := "Pre-production"
+    mgmt.Environments.Update(ctx, workspaceID, newEnv.ID, nahook.UpdateEnvironmentOptions{
+        Name: &updatedName,
+    })
+
+    // Delete
+    mgmt.Environments.Delete(ctx, workspaceID, newEnv.ID)
+
+    // ── Event Type Visibility ──
+
+    // List visibility for an environment
+    vis, err := mgmt.Environments.ListEventTypeVisibility(ctx, workspaceID, newEnv.ID)
+
+    // Set event type as published in an environment
+    entry, err := mgmt.Environments.SetEventTypeVisibility(ctx, workspaceID, newEnv.ID, newET.ID, nahook.SetVisibilityOptions{
+        Published: true,
+    })
 }
 ```
 
