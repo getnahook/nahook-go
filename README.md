@@ -38,6 +38,16 @@ func main() {
         log.Fatal(err)
     }
 
+    // The SDK automatically routes requests to the correct regional API
+    // based on your API key prefix (nhk_us_... → US, nhk_eu_... → EU,
+    // nhk_ap_... → Asia Pacific). No configuration needed.
+    //
+    // To override for testing/local dev:
+    //   c, err := client.New("nhk_us_...", client.WithBaseURL("http://localhost:3001"))
+    //
+    // For unit tests, mock the SDK client at the dependency injection boundary.
+    // For integration tests, override the base URL to point at a local server.
+
     ctx := context.Background()
 
     // Send to a specific endpoint
@@ -125,9 +135,7 @@ import (
 )
 
 func main() {
-    mgmt, err := management.New("nhm_your_management_token",
-        management.WithBaseURL("https://api.nahook.com"),
-    )
+    mgmt, err := management.New("nhm_your_management_token")
     if err != nil {
         log.Fatal(err)
     }
