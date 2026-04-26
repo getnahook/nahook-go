@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	nahook "github.com/getnahook/nahook-go"
+	"github.com/google/uuid"
 )
 
 // Client is the Nahook ingestion client.

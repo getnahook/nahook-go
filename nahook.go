@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	DefaultBaseURL  = "https://api.nahook.com"
-	DefaultTimeout  = 30 * time.Second
-	DefaultRetries  = 0
-	sdkVersion      = "0.1.0"
-	userAgent       = "nahook-go/" + sdkVersion
-	baseDelayMs     = 500
-	maxDelayMs      = 10_000
+	DefaultBaseURL = "https://api.nahook.com"
+	DefaultTimeout = 30 * time.Second
+	DefaultRetries = 0
+	sdkVersion     = "0.1.0"
+	userAgent      = "nahook-go/" + sdkVersion
+	baseDelayMs    = 500
+	maxDelayMs     = 10_000
 )
 
 // regionBaseURLs maps the region slug embedded in API keys to base URLs.
@@ -151,13 +151,13 @@ type TriggerBatchItem struct {
 
 // BatchResultItem is the result for one item in a batch operation.
 type BatchResultItem struct {
-	Index          int              `json:"index"`
-	DeliveryID     string           `json:"deliveryId,omitempty"`
-	IdempotencyKey string           `json:"idempotencyKey,omitempty"`
-	EventTypeID    string           `json:"eventTypeId,omitempty"`
-	DeliveryIDs    []string         `json:"deliveryIds,omitempty"`
-	Status         string           `json:"status,omitempty"`
-	Error          *BatchItemError  `json:"error,omitempty"`
+	Index          int             `json:"index"`
+	DeliveryID     string          `json:"deliveryId,omitempty"`
+	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
+	EventTypeID    string          `json:"eventTypeId,omitempty"`
+	DeliveryIDs    []string        `json:"deliveryIds,omitempty"`
+	Status         string          `json:"status,omitempty"`
+	Error          *BatchItemError `json:"error,omitempty"`
 }
 
 // BatchItemError is an error for a specific item in a batch.
