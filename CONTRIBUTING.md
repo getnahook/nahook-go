@@ -11,7 +11,7 @@ This repository is a **subtree-split mirror** of the Go SDK from our private mon
 - **Bug reports** — open a GitHub issue with: reproduction steps, SDK version, Go version (`go version`), OS, and `go env GOOS GOARCH`.
 - **Feature requests** — open an issue describing the use case and the API surface you'd want.
 - **Small code suggestions** — paste a snippet in an issue and describe intent; we'll port it into the monorepo and credit you in the resulting commit.
-- **Substantial patches** — email `support@nahook.com` first; we'll either discuss read access to the monorepo or hand-port your change with credit.
+- **Substantial patches** — email `support@nahook.com` first; we'll hand-port your change into the monorepo and credit you in the resulting commit.
 
 ## Local development
 
@@ -19,7 +19,7 @@ This repository is a **subtree-split mirror** of the Go SDK from our private mon
 git clone https://github.com/getnahook/nahook-go
 cd nahook-go
 go build ./...
-go test ./...    # ~100 tests across 6 packages
+go test ./...    # full unit test suite across all packages
 go vet ./...
 ```
 
