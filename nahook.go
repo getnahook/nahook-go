@@ -21,7 +21,7 @@ const (
 	DefaultBaseURL = "https://api.nahook.com"
 	DefaultTimeout = 30 * time.Second
 	DefaultRetries = 0
-	sdkVersion     = "0.1.0"
+	sdkVersion     = "0.1.1"
 	userAgent      = "nahook-go/" + sdkVersion
 	baseDelayMs    = 500
 	maxDelayMs     = 10_000
@@ -289,7 +289,9 @@ type CreateSubscriptionOptions struct {
 
 // CreatePortalSessionOptions configures a new portal session.
 type CreatePortalSessionOptions struct {
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+	Role             string            `json:"role,omitempty"`
+	ExpiresInMinutes int               `json:"expiresInMinutes,omitempty"`
 }
 
 // Environment represents a workspace environment.
