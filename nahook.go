@@ -245,6 +245,9 @@ type CreateEndpointOptions struct {
 	Config       map[string]interface{} `json:"config,omitempty"`
 	AuthUsername string                 `json:"authUsername,omitempty"`
 	AuthPassword string                 `json:"authPassword,omitempty"`
+	// EnvironmentID is optional. Public id (e.g. "env_abc123") of the environment
+	// to scope this endpoint. If omitted, the workspace's default environment is used.
+	EnvironmentID string `json:"environmentId,omitempty"`
 }
 
 // UpdateEndpointOptions configures an endpoint update.
