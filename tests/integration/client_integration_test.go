@@ -159,7 +159,9 @@ func TestTrigger_Unsubscribed(t *testing.T) {
 	c := newClient(t, apiURL, apiKey)
 	ctx := context.Background()
 
-	result, err := c.Trigger(ctx, "unsubscribed.event.that.does.not.exist", nahook.TriggerOptions{
+	// Pre-seeded fixture event type with zero subscriptions — shared across all SDK
+	// integration tests. See packages/db/src/seeds/test-fixtures.sql section 8b.
+	result, err := c.Trigger(ctx, "event.type.nobody.subscribed.to", nahook.TriggerOptions{
 		Payload: testPayload(),
 	})
 	if err != nil {
