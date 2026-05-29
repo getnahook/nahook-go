@@ -44,6 +44,9 @@ func TestNew_ValidToken(t *testing.T) {
 	if mgmt.Environments == nil {
 		t.Error("expected Environments to be initialized")
 	}
+	if mgmt.Deliveries == nil {
+		t.Error("expected Deliveries to be initialized")
+	}
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────────────
@@ -905,6 +908,308 @@ func TestURLEncoding(t *testing.T) {
 	_, err := mgmt.Endpoints.List(context.Background(), "ws with spaces")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ── Deliveries ──────────────────────────────────────────────────────────────
+
+func TestDeliveries_ListReturnsPaginatedDataAndNextCursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_abc/endpoints/ep_1/deliveries")
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deliveries": []map[string]interface{}{
+				{
+					"id": "del_a", "idempotencyKey": "k1", "endpointId": "ep_1",
+					"status": "delivered", "totalAttempts": 1,
+					"firstAttemptAt": "2026-05-28T14:30:59Z",
+					"deliveredAt":    "2026-05-28T14:30:59Z",
+					"nextRetryAt":    nil,
+					"hasPayload":     true,
+					"createdAt":      "2026-05-28T14:30:59Z",
+					"updatedAt":      "2026-05-28T14:30:59Z",
+				},
+				{
+					"id": "del_b", "idempotencyKey": "k2", "endpointId": "ep_1",
+					"status": "failed", "totalAttempts": 3,
+					"firstAttemptAt": "2026-05-28T14:31:00Z",
+					"deliveredAt":    nil,
+					"nextRetryAt":    nil,
+					"hasPayload":     false,
+					"createdAt":      "2026-05-28T14:31:00Z",
+					"updatedAt":      "2026-05-28T14:31:00Z",
+				},
+			},
+			"nextCursor": "opaque-token-aaa",
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Deliveries.List(context.Background(), "ws_abc", "ep_1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Data) != 2 {
+		t.Fatalf("expected 2 deliveries, got %d", len(result.Data))
+	}
+	if result.Data[0].ID != "del_a" {
+		t.Errorf("expected first id del_a, got %s", result.Data[0].ID)
+	}
+	if result.Data[0].HasPayload != true {
+		t.Errorf("expected hasPayload true, got %v", result.Data[0].HasPayload)
+	}
+	if result.NextCursor == nil {
+		t.Fatal("expected non-nil NextCursor")
+	}
+	if *result.NextCursor != "opaque-token-aaa" {
+		t.Errorf("expected nextCursor opaque-token-aaa, got %s", *result.NextCursor)
+	}
+}
+
+func TestDeliveries_ListReturnsNullCursorWhenLastPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deliveries": []map[string]interface{}{},
+			"nextCursor": nil,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Deliveries.List(context.Background(), "ws_abc", "ep_1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Data) != 0 {
+		t.Errorf("expected empty data, got %d items", len(result.Data))
+	}
+	if result.NextCursor != nil {
+		t.Errorf("expected NextCursor to be nil, got %v", *result.NextCursor)
+	}
+}
+
+func TestDeliveries_ListForwardsQueryParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "25" {
+			t.Errorf("expected limit=25, got %s", got)
+		}
+		if got := r.URL.Query().Get("cursor"); got != "opaque-token-xyz" {
+			t.Errorf("expected cursor=opaque-token-xyz, got %s", got)
+		}
+		if got := r.URL.Query().Get("status"); got != "failed" {
+			t.Errorf("expected status=failed, got %s", got)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"deliveries": []interface{}{}, "nextCursor": nil})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	limit := 25
+	_, err := mgmt.Deliveries.List(context.Background(), "ws_abc", "ep_1", &nahook.ListDeliveriesOptions{
+		Limit:  &limit,
+		Cursor: "opaque-token-xyz",
+		Status: "failed",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeliveries_ListOmitsUnsetQueryParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Has("limit") {
+			t.Error("expected limit to be omitted")
+		}
+		if q.Has("cursor") {
+			t.Error("expected cursor to be omitted")
+		}
+		if q.Has("status") {
+			t.Error("expected status to be omitted")
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"deliveries": []interface{}{}, "nextCursor": nil})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	_, err := mgmt.Deliveries.List(context.Background(), "ws_abc", "ep_1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeliveries_GetReturnsMetadataWithoutEnvelopeByDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_abc/deliveries/del_a")
+		if r.URL.Query().Has("include") {
+			t.Error("expected include query param to be omitted")
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "del_a", "idempotencyKey": "k1", "endpointId": "ep_1",
+			"status": "delivered", "totalAttempts": 1,
+			"firstAttemptAt": "2026-05-28T14:30:59Z",
+			"deliveredAt":    "2026-05-28T14:30:59Z",
+			"nextRetryAt":    nil,
+			"hasPayload":     true,
+			"createdAt":      "2026-05-28T14:30:59Z",
+			"updatedAt":      "2026-05-28T14:30:59Z",
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	delivery, err := mgmt.Deliveries.Get(context.Background(), "ws_abc", "del_a", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if delivery.ID != "del_a" {
+		t.Errorf("expected id del_a, got %s", delivery.ID)
+	}
+	if !delivery.HasPayload {
+		t.Errorf("expected hasPayload true, got false")
+	}
+	if delivery.Payload != nil {
+		t.Errorf("expected Payload to be nil, got %+v", delivery.Payload)
+	}
+}
+
+func TestDeliveries_GetWithIncludePayloadReturnsEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_abc/deliveries/del_a")
+		if got := r.URL.Query().Get("include"); got != "payload" {
+			t.Errorf("expected include=payload, got %s", got)
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "del_a", "idempotencyKey": "k1", "endpointId": "ep_1",
+			"status": "delivered", "totalAttempts": 1,
+			"firstAttemptAt": "2026-05-28T14:30:59Z",
+			"deliveredAt":    "2026-05-28T14:30:59Z",
+			"nextRetryAt":    nil,
+			"hasPayload":     true,
+			"createdAt":      "2026-05-28T14:30:59Z",
+			"updatedAt":      "2026-05-28T14:30:59Z",
+			"payload": map[string]interface{}{
+				"status":      "available",
+				"data":        map[string]interface{}{"orderId": "ord_123"},
+				"contentType": "application/json",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	delivery, err := mgmt.Deliveries.Get(context.Background(), "ws_abc", "del_a", &nahook.GetDeliveryOptions{
+		IncludePayload: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if delivery.Payload == nil {
+		t.Fatal("expected non-nil Payload envelope")
+	}
+	if delivery.Payload.Status != "available" {
+		t.Errorf("expected payload status available, got %s", delivery.Payload.Status)
+	}
+	if delivery.Payload.ContentType != "application/json" {
+		t.Errorf("expected contentType application/json, got %s", delivery.Payload.ContentType)
+	}
+	// Decode the opaque Data payload to verify it round-trips.
+	var decoded struct {
+		OrderID string `json:"orderId"`
+	}
+	if err := json.Unmarshal(delivery.Payload.Data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal payload data: %v", err)
+	}
+	if decoded.OrderID != "ord_123" {
+		t.Errorf("expected orderId ord_123, got %s", decoded.OrderID)
+	}
+}
+
+func TestDeliveries_GetReturnsForbiddenEnvelopeForPlanGatedWorkspace(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "del_a", "idempotencyKey": "k1", "endpointId": "ep_1",
+			"status": "delivered", "totalAttempts": 1,
+			"firstAttemptAt": nil,
+			"deliveredAt":    "2026-05-28T14:30:59Z",
+			"nextRetryAt":    nil,
+			"hasPayload":     true,
+			"createdAt":      "2026-05-28T14:30:59Z",
+			"updatedAt":      "2026-05-28T14:30:59Z",
+			"payload": map[string]interface{}{
+				"status": "forbidden",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	delivery, err := mgmt.Deliveries.Get(context.Background(), "ws_abc", "del_a", &nahook.GetDeliveryOptions{
+		IncludePayload: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if delivery.Payload == nil {
+		t.Fatal("expected non-nil Payload envelope")
+	}
+	if delivery.Payload.Status != "forbidden" {
+		t.Errorf("expected payload status forbidden, got %s", delivery.Payload.Status)
+	}
+	if len(delivery.Payload.Data) != 0 {
+		t.Errorf("expected Data to be empty for forbidden envelope, got %s", string(delivery.Payload.Data))
+	}
+	if delivery.Payload.ContentType != "" {
+		t.Errorf("expected ContentType to be empty for forbidden envelope, got %s", delivery.Payload.ContentType)
+	}
+}
+
+func TestDeliveries_GetAttemptsReturnsArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertMethod(t, r, "GET")
+		assertPath(t, r, "/management/v1/workspaces/ws_abc/deliveries/del_a/attempts")
+
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{
+				"id": "att_1", "attemptNumber": 1, "status": "failed",
+				"responseStatusCode": 502, "responseTimeMs": 142,
+				"errorMessage": "Bad gateway", "createdAt": "2026-05-28T14:31:00Z",
+			},
+			{
+				"id": "att_2", "attemptNumber": 2, "status": "success",
+				"responseStatusCode": 200, "responseTimeMs": 88,
+				"errorMessage": nil, "createdAt": "2026-05-28T14:31:30Z",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	attempts, err := mgmt.Deliveries.GetAttempts(context.Background(), "ws_abc", "del_a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("expected 2 attempts, got %d", len(attempts))
+	}
+	if attempts[0].AttemptNumber != 1 {
+		t.Errorf("expected first attemptNumber 1, got %d", attempts[0].AttemptNumber)
+	}
+	if attempts[1].Status != "success" {
+		t.Errorf("expected second status success, got %s", attempts[1].Status)
+	}
+	if attempts[0].ResponseStatusCode == nil || *attempts[0].ResponseStatusCode != 502 {
+		t.Errorf("expected first responseStatusCode 502, got %v", attempts[0].ResponseStatusCode)
+	}
+	if attempts[1].ErrorMessage != nil {
+		t.Errorf("expected second errorMessage nil, got %v", *attempts[1].ErrorMessage)
 	}
 }
 
