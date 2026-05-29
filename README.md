@@ -332,6 +332,119 @@ func main() {
 }
 ```
 
+### Deliveries
+
+Read access to a workspace's webhook deliveries — paginated list scoped to an
+endpoint, single-delivery metadata with an optional payload envelope, and
+the list of HTTP attempts behind a delivery.
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+
+    nahook "github.com/getnahook/nahook-go"
+    "github.com/getnahook/nahook-go/management"
+)
+
+func main() {
+    mgmt, err := management.New("nhm_your_management_token")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    workspaceID := "ws_abc123"
+    endpointID := "ep_abc123"
+
+    // ── List deliveries (paginated, newest-first) ──
+    //
+    // NextCursor is an opaque server-encrypted token — pass it back on the
+    // next call verbatim. It is nil when there are no more pages.
+    limit := 50
+    page, err := mgmt.Deliveries.List(ctx, workspaceID, endpointID, &nahook.ListDeliveriesOptions{
+        Limit: &limit,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, d := range page.Data {
+        fmt.Printf("Delivery %s status=%s attempts=%d\n", d.ID, d.Status, d.TotalAttempts)
+    }
+    if page.NextCursor != nil {
+        nextPage, _ := mgmt.Deliveries.List(ctx, workspaceID, endpointID, &nahook.ListDeliveriesOptions{
+            Limit:  &limit,
+            Cursor: *page.NextCursor,
+        })
+        fmt.Printf("Next page has %d more deliveries\n", len(nextPage.Data))
+    }
+
+    // ── Filter by status ──
+    failed, err := mgmt.Deliveries.List(ctx, workspaceID, endpointID, &nahook.ListDeliveriesOptions{
+        Status: "failed",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("%d failed deliveries\n", len(failed.Data))
+
+    // ── Get a single delivery's metadata ──
+    delivery, err := mgmt.Deliveries.Get(ctx, workspaceID, "del_abc123", nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Delivery %s endpoint=%s hasPayload=%v\n",
+        delivery.ID, delivery.EndpointID, delivery.HasPayload)
+
+    // ── Get with payload envelope ──
+    //
+    // The envelope is a tagged union: inspect Status before reading Data.
+    // The four non-"available" statuses are returned with HTTP 200 — they
+    // are not errors, they describe why the payload could not be returned.
+    withPayload, err := mgmt.Deliveries.Get(ctx, workspaceID, "del_abc123", &nahook.GetDeliveryOptions{
+        IncludePayload: true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if withPayload.Payload != nil {
+        switch withPayload.Payload.Status {
+        case "available":
+            var body map[string]interface{}
+            if err := json.Unmarshal(withPayload.Payload.Data, &body); err == nil {
+                fmt.Printf("Payload (%s): %v\n", withPayload.Payload.ContentType, body)
+            }
+        case "forbidden":
+            fmt.Println("Payload storage not included in this workspace's plan")
+        case "processing":
+            fmt.Println("Delivery still in flight, try again shortly")
+        case "not_found":
+            fmt.Println("No stored payload for this delivery")
+        case "error":
+            fmt.Println("Transient infrastructure failure reading the payload")
+        }
+    }
+
+    // ── List attempts (chronological, oldest first) ──
+    attempts, err := mgmt.Deliveries.GetAttempts(ctx, workspaceID, "del_abc123")
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, a := range attempts {
+        statusCode := "n/a"
+        if a.ResponseStatusCode != nil {
+            statusCode = fmt.Sprintf("%d", *a.ResponseStatusCode)
+        }
+        fmt.Printf("Attempt #%d status=%s response=%s\n",
+            a.AttemptNumber, a.Status, statusCode)
+    }
+}
+```
+
 ### Error Handling
 
 ```go

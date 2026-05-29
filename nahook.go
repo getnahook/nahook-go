@@ -327,6 +327,87 @@ type SetVisibilityOptions struct {
 	Published bool `json:"published"`
 }
 
+// PaginatedResult is a generic cursor-paginated read result. NextCursor is an
+// opaque, server-encrypted token — pass it back verbatim on the next request,
+// do not decode or modify it. Nil when there are no more pages.
+type PaginatedResult[T any] struct {
+	Data       []T     `json:"data"`
+	NextCursor *string `json:"nextCursor"`
+}
+
+// DeliveryStatus enumerates the lifecycle states of a webhook delivery.
+// Possible values: "pending", "delivering", "delivered", "scheduled_retry",
+// "failed", "dead_letter".
+type DeliveryStatus = string
+
+// Delivery represents a webhook delivery's metadata (no payload body).
+type Delivery struct {
+	ID             string  `json:"id"`
+	IdempotencyKey string  `json:"idempotencyKey"`
+	EndpointID     string  `json:"endpointId"`
+	Status         string  `json:"status"`
+	TotalAttempts  int     `json:"totalAttempts"`
+	FirstAttemptAt *string `json:"firstAttemptAt"`
+	DeliveredAt    *string `json:"deliveredAt"`
+	NextRetryAt    *string `json:"nextRetryAt"`
+	HasPayload     bool    `json:"hasPayload"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
+}
+
+// PayloadEnvelope is a flat tagged union describing the access state of a
+// stored delivery payload. The Status field discriminates which other fields
+// are populated:
+//
+//   - "available": Data and ContentType are set.
+//   - "forbidden": workspace plan does not include payload storage.
+//   - "processing": delivery still in flight, payload not yet written.
+//   - "not_found": terminal delivery without a stored payload.
+//   - "error": transient infrastructure failure reading the payload.
+//
+// Only "available" is a successful read; all four other statuses are
+// returned with HTTP 200 — do not treat them as errors.
+type PayloadEnvelope struct {
+	Status      string          `json:"status"`
+	Data        json.RawMessage `json:"data,omitempty"`
+	ContentType string          `json:"contentType,omitempty"`
+}
+
+// DeliveryWithPayload is the response shape from get() — Delivery metadata,
+// plus an optional payload envelope when the request included ?include=payload.
+type DeliveryWithPayload struct {
+	Delivery
+	Payload *PayloadEnvelope `json:"payload,omitempty"`
+}
+
+// DeliveryAttempt represents one HTTP delivery attempt against an endpoint.
+// Status is an opaque worker-emitted string (e.g. "success", "failed") — do
+// not model it as an enum, the set may evolve.
+type DeliveryAttempt struct {
+	ID                 string  `json:"id"`
+	AttemptNumber      int     `json:"attemptNumber"`
+	Status             string  `json:"status"`
+	ResponseStatusCode *int    `json:"responseStatusCode"`
+	ResponseTimeMs     *int    `json:"responseTimeMs"`
+	ErrorMessage       *string `json:"errorMessage"`
+	CreatedAt          string  `json:"createdAt"`
+}
+
+// ListDeliveriesOptions configures a deliveries list query. All fields are
+// optional. Cursor is an opaque token from a previous PaginatedResult's
+// NextCursor — pass it through verbatim.
+type ListDeliveriesOptions struct {
+	Limit  *int
+	Cursor string
+	Status string
+}
+
+// GetDeliveryOptions configures a single delivery fetch. Set IncludePayload
+// to true to request the payload envelope alongside metadata.
+type GetDeliveryOptions struct {
+	IncludePayload bool
+}
+
 // ── Internal HTTP client ────────────────────────────────────────────────────
 
 // HTTPClient is the internal HTTP client shared by the client and management packages.

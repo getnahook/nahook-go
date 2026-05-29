@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -478,6 +479,179 @@ func TestEventTypeVisibility(t *testing.T) {
 	if vis.Published {
 		t.Fatal("expected published=false after setting")
 	}
+}
+
+// ── Deliveries — reads against pre-seeded fixture rows ─────────────────────
+//
+// Fixture data lives in packages/db/src/seeds/test-fixtures.sql:
+//   del_fixture_001 — delivered, hasPayload=true
+//   del_fixture_002 — failed, 3 attempts, hasPayload=false
+//   del_fixture_003 — delivering, hasPayload=false
+// All three are scoped to ep_integration_test_001.
+
+func TestDeliveriesListReturnsSeededRowsWithOpaqueCursor(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	limit := 2
+	result, err := client.Deliveries.List(ctx, wsID, "ep_integration_test_001", &nahook.ListDeliveriesOptions{
+		Limit: &limit,
+	})
+	if err != nil {
+		t.Fatalf("List deliveries: %v", err)
+	}
+	if len(result.Data) != 2 {
+		t.Fatalf("expected 2 deliveries, got %d", len(result.Data))
+	}
+	foundNewest := false
+	for _, d := range result.Data {
+		if d.ID == "del_fixture_003" {
+			foundNewest = true
+		}
+	}
+	if !foundNewest {
+		t.Fatalf("expected del_fixture_003 (newest) in first page; ids: %v", deliveryIDs(result.Data))
+	}
+	if result.NextCursor == nil {
+		t.Fatal("expected non-nil NextCursor with 3 fixture rows and limit=2")
+	}
+	if strings.HasPrefix(*result.NextCursor, "del_") {
+		t.Fatalf("nextCursor leaked publicId format: %s", *result.NextCursor)
+	}
+}
+
+func TestDeliveriesListWithStatusFailedReturnsSingleFixture(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	result, err := client.Deliveries.List(ctx, wsID, "ep_integration_test_001", &nahook.ListDeliveriesOptions{
+		Status: "failed",
+	})
+	if err != nil {
+		t.Fatalf("List deliveries (status=failed): %v", err)
+	}
+	if len(result.Data) != 1 {
+		t.Fatalf("expected exactly 1 failed delivery, got %d", len(result.Data))
+	}
+	failed := result.Data[0]
+	if failed.ID != "del_fixture_002" {
+		t.Errorf("expected id del_fixture_002, got %s", failed.ID)
+	}
+	if failed.Status != "failed" {
+		t.Errorf("expected status failed, got %s", failed.Status)
+	}
+	if failed.TotalAttempts != 3 {
+		t.Errorf("expected totalAttempts 3, got %d", failed.TotalAttempts)
+	}
+	if failed.HasPayload {
+		t.Errorf("expected hasPayload false, got true")
+	}
+}
+
+func TestDeliveriesGetReturnsMetadataWithoutEnvelopeByDefault(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	delivery, err := client.Deliveries.Get(ctx, wsID, "del_fixture_001", nil)
+	if err != nil {
+		t.Fatalf("Get delivery: %v", err)
+	}
+	if delivery.ID != "del_fixture_001" {
+		t.Errorf("expected id del_fixture_001, got %s", delivery.ID)
+	}
+	if delivery.EndpointID != "ep_integration_test_001" {
+		t.Errorf("expected endpointId ep_integration_test_001, got %s", delivery.EndpointID)
+	}
+	if delivery.Status != "delivered" {
+		t.Errorf("expected status delivered, got %s", delivery.Status)
+	}
+	if !delivery.HasPayload {
+		t.Errorf("expected hasPayload true, got false")
+	}
+	if delivery.Payload != nil {
+		t.Errorf("expected no payload envelope without IncludePayload, got %+v", delivery.Payload)
+	}
+}
+
+func TestDeliveriesGetWithIncludePayloadReturnsEnvelope(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	delivery, err := client.Deliveries.Get(ctx, wsID, "del_fixture_001", &nahook.GetDeliveryOptions{
+		IncludePayload: true,
+	})
+	if err != nil {
+		t.Fatalf("Get delivery (includePayload): %v", err)
+	}
+	if delivery.Payload == nil {
+		t.Fatal("expected non-nil payload envelope")
+	}
+	// R2 wiring in the test infra may not be configured, in which case the
+	// envelope reports "error" or "not_found". All 5 status values are valid
+	// wire-level responses.
+	validStatuses := map[string]bool{
+		"available":  true,
+		"forbidden":  true,
+		"processing": true,
+		"not_found":  true,
+		"error":      true,
+	}
+	if !validStatuses[delivery.Payload.Status] {
+		t.Errorf("envelope status not in valid set: %s", delivery.Payload.Status)
+	}
+}
+
+func TestDeliveriesGetAttemptsReturnsChronologicalArray(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	attempts, err := client.Deliveries.GetAttempts(ctx, wsID, "del_fixture_002")
+	if err != nil {
+		t.Fatalf("GetAttempts: %v", err)
+	}
+	if len(attempts) != 3 {
+		t.Fatalf("expected 3 attempts for del_fixture_002, got %d", len(attempts))
+	}
+	if attempts[0].AttemptNumber != 1 {
+		t.Errorf("expected first attemptNumber 1, got %d", attempts[0].AttemptNumber)
+	}
+	if attempts[1].AttemptNumber != 2 {
+		t.Errorf("expected second attemptNumber 2, got %d", attempts[1].AttemptNumber)
+	}
+	if attempts[2].AttemptNumber != 3 {
+		t.Errorf("expected third attemptNumber 3, got %d", attempts[2].AttemptNumber)
+	}
+	if attempts[0].ResponseStatusCode == nil || *attempts[0].ResponseStatusCode != 502 {
+		got := "<nil>"
+		if attempts[0].ResponseStatusCode != nil {
+			got = fmt.Sprintf("%d", *attempts[0].ResponseStatusCode)
+		}
+		t.Errorf("expected first responseStatusCode 502, got %s", got)
+	}
+}
+
+func TestDeliveriesGetMissingReturns404(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+
+	_, err := client.Deliveries.Get(ctx, wsID, "del_does_not_exist_anywhere", nil)
+	if err == nil {
+		t.Fatal("expected error for missing delivery, got nil")
+	}
+	var apiErr *nahook.APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsNotFound() {
+		t.Fatalf("expected 404 not-found error, got: %v", err)
+	}
+}
+
+// deliveryIDs is a tiny helper for logging — keeps the assertion messages
+// readable when a paginated list comes back in an unexpected order.
+func deliveryIDs(ds []nahook.Delivery) []string {
+	ids := make([]string, len(ds))
+	for i, d := range ds {
+		ids[i] = d.ID
+	}
+	return ids
 }
 
 func TestAuthError(t *testing.T) {
