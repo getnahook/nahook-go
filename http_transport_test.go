@@ -232,6 +232,17 @@ func TestClient_Close_DelegatesToHTTPClient(t *testing.T) {
 	c.Close()
 }
 
+func TestClient_Close_IsIdempotent(t *testing.T) {
+	// Public-API-level idempotency guarantee: defer + explicit Close,
+	// or two defers in different scopes, must not panic.
+	c, err := client.New("nhk_us_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	c.Close()
+}
+
 func TestManagement_Close_DelegatesToHTTPClient(t *testing.T) {
 	m, err := management.New("nhm_test")
 	if err != nil {
