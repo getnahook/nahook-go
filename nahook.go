@@ -594,12 +594,17 @@ func (c *HTTPClient) executeWithRetry(ctx context.Context, opts RequestOptions) 
 
 		resp, err := c.http.Do(req)
 		if err != nil {
-			// Two distinct timeout sources collapse to TimeoutError:
-			//   1. caller cancelled / their ctx deadline expired (ctx.Err() != nil)
-			//   2. http.Client.Timeout fired — does NOT cancel the outer ctx, but
-			//      surfaces a wrapped context.DeadlineExceeded inside the returned err.
+			// Three distinct timeout sources collapse to TimeoutError:
+			//   1. caller cancelled or their ctx deadline expired (ctx.Err() != nil)
+			//   2. http.Client.Timeout fired with the RoundTripper returning a
+			//      context.DeadlineExceeded under the *url.Error wrapper
+			//   3. http.Client.Timeout fired and net/http wrapped its internal
+			//      *httpError (doesn't unwrap to DeadlineExceeded, but does
+			//      implement net.Error.Timeout() returning true). Which of (2)
+			//      vs (3) shows up depends on the Go version + timing — check
+			//      both via net.Error.Timeout(), which both shapes implement.
 			// Anything else is a transport-level failure → NetworkError.
-			if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+			if ctx.Err() != nil || isTimeoutErr(err) {
 				lastErr = &TimeoutError{TimeoutMs: int(c.timeout.Milliseconds())}
 			} else {
 				lastErr = &NetworkError{Cause: err}
@@ -676,6 +681,21 @@ func (c *HTTPClient) buildURL(path string, query map[string]string) string {
 		}
 	}
 	return u
+}
+
+// isTimeoutErr reports whether err represents a timeout. Walks the wrap chain
+// looking for either context.DeadlineExceeded (the simple case) or anything
+// implementing the net.Error.Timeout() interface (the http.Client.Timeout
+// case where Go wraps an internal *httpError).
+func isTimeoutErr(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
 }
 
 // calculateDelay computes the retry delay with exponential backoff and full jitter.

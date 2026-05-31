@@ -166,6 +166,35 @@ func TestSDKDoesNotReconstructHTTPClientPerRequest(t *testing.T) {
 	}
 }
 
+// ── net.Error.Timeout() classification (Go-version-independent) ───────────
+
+func TestTimeoutErrorClassification_FromNetErrorTimeoutInterface(t *testing.T) {
+	// Pin the classification path: a RoundTripper that returns an error
+	// implementing net.Error.Timeout() == true MUST surface as TimeoutError.
+	// Regression guard against Go-version-dependent http.Client error wrapping:
+	// in some versions Client.Timeout produces a *url.Error wrapping
+	// context.DeadlineExceeded (errors.Is catches it), in others an unexported
+	// *httpError that only implements net.Error (errors.Is does NOT catch it).
+	custom := &http.Client{
+		Transport: &timeoutRoundTripper{},
+	}
+	c, err := client.New("nhk_us_test",
+		client.WithBaseURL("https://test.nahook.com"),
+		client.WithHTTPClient(custom),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = c.Send(context.Background(), "ep_abc", nahook.SendOptions{
+		Payload: map[string]interface{}{"x": 1},
+	})
+
+	if _, ok := err.(*nahook.TimeoutError); !ok {
+		t.Fatalf("expected *nahook.TimeoutError, got %T: %v", err, err)
+	}
+}
+
 // ── Round-tripper test doubles ─────────────────────────────────────────────
 
 // slowRoundTripper blocks until the request context is cancelled — used for
@@ -177,6 +206,21 @@ func (s *slowRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	<-r.Context().Done()
 	return nil, r.Context().Err()
 }
+
+// timeoutRoundTripper returns an error that satisfies the net.Error interface
+// with Timeout() == true — mirrors the shape Go's http.Client produces when
+// Client.Timeout fires. Used to pin the SDK's timeout-classification path.
+type timeoutRoundTripper struct{}
+
+func (t *timeoutRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return nil, &netTimeoutError{}
+}
+
+type netTimeoutError struct{}
+
+func (e *netTimeoutError) Error() string   { return "i/o timeout" }
+func (e *netTimeoutError) Timeout() bool   { return true }
+func (e *netTimeoutError) Temporary() bool { return true }
 
 // countingRoundTripper returns a minimal 202-accepted ingest response and
 // increments count on every RoundTrip call. The response body is real JSON
