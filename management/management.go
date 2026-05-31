@@ -91,3 +91,11 @@ func New(token string, opts ...Option) (*Management, error) {
 func (m *Management) HTTPClient() *http.Client {
 	return m.http.HTTPClient()
 }
+
+// Close drains the SDK-owned *http.Transport's idle connection pool. Useful
+// for clean test teardown, graceful shutdown, or explicit reset before
+// recycling long-lived clients. Idempotent. No-op when a caller-owned
+// *http.Client was supplied via WithHTTPClient.
+func (m *Management) Close() {
+	m.http.Close()
+}
