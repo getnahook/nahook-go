@@ -546,7 +546,11 @@ import (
 custom := &http.Client{
     Timeout: 15 * time.Second,
     Transport: &http.Transport{
-        // Your own pool sizing, mTLS, proxy, custom RoundTripper, etc.
+        // Don't forget Proxy: http.ProxyFromEnvironment if you want
+        // HTTP_PROXY / HTTPS_PROXY env support — handcrafted Transports
+        // drop the default's proxy wiring.
+        Proxy: http.ProxyFromEnvironment,
+        // Your own pool sizing, mTLS, custom RoundTripper, etc.
         MaxIdleConnsPerHost: 200,
         IdleConnTimeout:     60 * time.Second,
         ForceAttemptHTTP2:   true,
@@ -561,7 +565,7 @@ c, err := client.New("nhk_us_...",
 When `WithHTTPClient` is supplied:
 
 - The SDK uses your client verbatim and does **not** mutate it (good for shared clients).
-- Your `http.Client.Timeout` governs request timeouts and is what `TimeoutError.TimeoutMs` reports.
+- Your `http.Client.Timeout` governs request timeouts and is what `TimeoutError.TimeoutMs` reports. If you set `Timeout: 0` (Go's "no timeout"), `TimeoutError.TimeoutMs` will be `0` in any error report — set a concrete timeout if you care about the reported value.
 - `WithTimeout` is silently ignored — your client's `Timeout` wins.
 - You own its lifecycle (the SDK has no `Close`/`Dispose` for it).
 

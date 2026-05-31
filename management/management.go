@@ -46,7 +46,8 @@ func WithTimeout(d time.Duration) Option {
 
 // WithHTTPClient supplies a caller-owned *http.Client to use for all requests.
 // The SDK uses it verbatim and does not mutate it. The caller's HTTPClient.Timeout
-// governs request timeouts and is what TimeoutError.TimeoutMs reports.
+// governs request timeouts and is what TimeoutError.TimeoutMs reports — note that
+// Go's zero-value Timeout means "no timeout", which propagates to TimeoutMs as 0.
 func WithHTTPClient(c *http.Client) Option {
 	return func(o *options) { o.httpClient = c }
 }

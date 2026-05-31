@@ -2,10 +2,11 @@ package nahook_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,7 +69,7 @@ func TestHTTPClientConfig_HTTPClient_TimeoutDrivesTimeoutError(t *testing.T) {
 	// TimeoutError.TimeoutMs reports.
 	custom := &http.Client{
 		Timeout:   50 * time.Millisecond,
-		Transport: &slowRoundTripper{delay: 500 * time.Millisecond},
+		Transport: &slowRoundTripper{},
 	}
 	c, err := client.New("nhk_us_test", client.WithHTTPClient(custom))
 	if err != nil {
@@ -133,6 +134,9 @@ func TestManagement_WithHTTPClient_FunnelsThroughCustom(t *testing.T) {
 // ── HTTP client is not reconstructed per request ──────────────────────────
 
 func TestSDKDoesNotReconstructHTTPClientPerRequest(t *testing.T) {
+	// Regression guard. The SDK's *http.Client field is set in the constructor
+	// and never re-assigned. No public API today can mutate it post-construction —
+	// this test exists to catch a future change that breaks that invariant.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
@@ -146,7 +150,7 @@ func TestSDKDoesNotReconstructHTTPClientPerRequest(t *testing.T) {
 	}
 
 	// Snapshot internal *http.Client before any calls.
-	httpClientBefore := nahookHTTPClient(c)
+	httpClientBefore := c.HTTPClient()
 
 	for i := 0; i < 5; i++ {
 		_, err := c.Send(context.Background(), "ep_abc", nahook.SendOptions{
@@ -157,57 +161,41 @@ func TestSDKDoesNotReconstructHTTPClientPerRequest(t *testing.T) {
 		}
 	}
 
-	if nahookHTTPClient(c) != httpClientBefore {
+	if c.HTTPClient() != httpClientBefore {
 		t.Error("SDK reconstructed its *http.Client across calls — should reuse the same instance")
 	}
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Round-tripper test doubles ─────────────────────────────────────────────
 
-// nahookHTTPClient reaches into the Client to fetch the internal *http.Client
-// it's using. Uses the public HTTPClient() inspector on client.Client.
-func nahookHTTPClient(c *client.Client) *http.Client {
-	return c.HTTPClient()
-}
-
-type slowRoundTripper struct {
-	delay time.Duration
-}
+// slowRoundTripper blocks until the request context is cancelled — used for
+// timeout-precedence tests. Has no success branch: the test paths driving it
+// always cancel via http.Client.Timeout before any response would be returned.
+type slowRoundTripper struct{}
 
 func (s *slowRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	select {
-	case <-time.After(s.delay):
-		// Build a minimal accepted response if we ever got here.
-		body, _ := json.Marshal(map[string]interface{}{
-			"deliveryId": "del_x", "idempotencyKey": "k", "status": "accepted",
-		})
-		resp := &http.Response{
-			StatusCode: http.StatusAccepted,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       http.NoBody,
-		}
-		_ = body
-		return resp, nil
-	case <-r.Context().Done():
-		return nil, r.Context().Err()
-	}
+	<-r.Context().Done()
+	return nil, r.Context().Err()
 }
 
+// countingRoundTripper returns a minimal 202-accepted ingest response and
+// increments count on every RoundTrip call. The response body is real JSON
+// the SDK can decode, so the test exercises the full happy path.
 type countingRoundTripper struct {
 	count int
 }
 
 func (c *countingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	c.count++
-	// Return a generic 200 with minimal JSON; caller paths tolerate decoding noise.
-	body := `{"deliveryId":"del_1","idempotencyKey":"k","status":"accepted","data":[]}`
+	body := `{"deliveryId":"del_1","idempotencyKey":"k","status":"accepted"}`
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       http.NoBody,
-		Request:    r,
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1, ProtoMinor: 1,
+		StatusCode:    http.StatusAccepted,
+		Header:        http.Header{"Content-Type": []string{"application/json"}},
+		Body:          io.NopCloser(strings.NewReader(body)),
 		ContentLength: int64(len(body)),
+		Request:       r,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
 	}, nil
 }
