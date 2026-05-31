@@ -47,7 +47,7 @@ func TestSend(t *testing.T) {
 		if r.Header.Get("Accept") != "application/json" {
 			t.Errorf("unexpected accept header: %s", r.Header.Get("Accept"))
 		}
-		if r.Header.Get("User-Agent") != "nahook-go/0.2.0" {
+		if r.Header.Get("User-Agent") != "nahook-go/0.2.1" {
 			t.Errorf("unexpected user-agent: %s", r.Header.Get("User-Agent"))
 		}
 

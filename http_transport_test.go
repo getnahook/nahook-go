@@ -195,6 +195,67 @@ func TestTimeoutErrorClassification_FromNetErrorTimeoutInterface(t *testing.T) {
 	}
 }
 
+// ── Close() lifecycle ──────────────────────────────────────────────────────
+
+func TestClose_OnDefaultClient_DoesNotPanic(t *testing.T) {
+	c := nahook.NewHTTPClient(nahook.HTTPClientConfig{Token: "nhk_us_test"})
+	// Should not panic; calling twice should also be safe — Go's
+	// http.Transport.CloseIdleConnections is naturally idempotent.
+	c.Close()
+	c.Close()
+}
+
+func TestClose_OnBYOClient_DoesNotTouchCallerTransport(t *testing.T) {
+	// The caller-owned *http.Client has lifecycle owned by the caller.
+	// SDK Close() must NOT trigger CloseIdleConnections on the caller's transport.
+	spy := &closeIdleSpyRoundTripper{}
+	custom := &http.Client{Transport: spy}
+
+	c := nahook.NewHTTPClient(nahook.HTTPClientConfig{
+		Token:      "nhk_us_test",
+		HTTPClient: custom,
+	})
+
+	c.Close()
+
+	if spy.closeCount != 0 {
+		t.Errorf("expected caller-owned transport untouched, got CloseIdleConnections call count = %d", spy.closeCount)
+	}
+}
+
+func TestClient_Close_DelegatesToHTTPClient(t *testing.T) {
+	c, err := client.New("nhk_us_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Smoke test: no panic on default-built client.
+	c.Close()
+}
+
+func TestManagement_Close_DelegatesToHTTPClient(t *testing.T) {
+	m, err := management.New("nhm_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Close()
+}
+
+func TestClient_Close_OnBYOClient_DoesNotTouchCallerTransport(t *testing.T) {
+	spy := &closeIdleSpyRoundTripper{}
+	custom := &http.Client{Transport: spy}
+
+	c, err := client.New("nhk_us_test", client.WithHTTPClient(custom))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close()
+
+	if spy.closeCount != 0 {
+		t.Errorf("client.Close() touched caller's transport: CloseIdleConnections count = %d", spy.closeCount)
+	}
+}
+
 // ── Round-tripper test doubles ─────────────────────────────────────────────
 
 // slowRoundTripper blocks until the request context is cancelled — used for
@@ -221,6 +282,29 @@ type netTimeoutError struct{}
 func (e *netTimeoutError) Error() string   { return "i/o timeout" }
 func (e *netTimeoutError) Timeout() bool   { return true }
 func (e *netTimeoutError) Temporary() bool { return true }
+
+// closeIdleSpyRoundTripper implements CloseIdleConnections so it satisfies the
+// http.Client.CloseIdleConnections dispatch path. Used to verify the SDK's
+// Close() does NOT propagate to a caller-owned *http.Client's transport.
+type closeIdleSpyRoundTripper struct {
+	closeCount int
+}
+
+func (s *closeIdleSpyRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{}`)),
+		Request:    r,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+	}, nil
+}
+
+func (s *closeIdleSpyRoundTripper) CloseIdleConnections() {
+	s.closeCount++
+}
 
 // countingRoundTripper returns a minimal 202-accepted ingest response and
 // increments count on every RoundTrip call. The response body is real JSON

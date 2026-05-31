@@ -82,6 +82,15 @@ func (c *Client) HTTPClient() *http.Client {
 	return c.http.HTTPClient()
 }
 
+// Close drains the SDK-owned *http.Transport's idle connection pool. Useful
+// for clean test teardown, graceful shutdown, or explicit reset before
+// recycling long-lived clients. Idempotent. No-op when a caller-owned
+// *http.Client was supplied via WithHTTPClient — that transport's lifecycle
+// belongs to the caller.
+func (c *Client) Close() {
+	c.http.Close()
+}
+
 // Send sends a payload to a specific endpoint.
 // If IdempotencyKey is not set in opts, a UUID v4 is generated automatically.
 func (c *Client) Send(ctx context.Context, endpointID string, opts nahook.SendOptions) (*nahook.SendResult, error) {

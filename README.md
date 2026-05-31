@@ -567,7 +567,23 @@ When `WithHTTPClient` is supplied:
 - The SDK uses your client verbatim and does **not** mutate it (good for shared clients).
 - Your `http.Client.Timeout` governs request timeouts and is what `TimeoutError.TimeoutMs` reports. If you set `Timeout: 0` (Go's "no timeout"), `TimeoutError.TimeoutMs` will be `0` in any error report — set a concrete timeout if you care about the reported value.
 - `WithTimeout` is silently ignored — your client's `Timeout` wins.
-- You own its lifecycle (the SDK has no `Close`/`Dispose` for it).
+- You own its lifecycle. `Client.Close()` is a no-op in this case — call `CloseIdleConnections()` on your own transport when you want to drain.
+
+### Graceful shutdown — `Close()`
+
+```go
+c, err := client.New("nhk_us_...")
+if err != nil {
+    log.Fatal(err)
+}
+defer c.Close()
+```
+
+`Close()` drains the SDK-owned `*http.Transport`'s idle connection pool. Idempotent and cheap — safe in `defer` blocks, graceful shutdown handlers, or before recycling a long-lived client. It's a no-op when a custom `*http.Client` was supplied via `WithHTTPClient`, since that transport's lifecycle belongs to the caller.
+
+`management.Management` exposes the same `Close()` method.
+
+Skipping `Close()` is fine for short-lived scripts — the OS reaps sockets on process exit — but matters for test harnesses and long-running services where you want connections drained at known points.
 
 Wrap your `http.RoundTripper` to plug in OpenTelemetry, Datadog, custom retry logic, or auth refresh — the SDK only ever calls `Do(req)` on the supplied client, so any standard middleware composes cleanly. The same `WithHTTPClient` option is available on the management client.
 

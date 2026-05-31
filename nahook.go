@@ -23,7 +23,7 @@ const (
 	DefaultBaseURL = "https://api.nahook.com"
 	DefaultTimeout = 30 * time.Second
 	DefaultRetries = 0
-	sdkVersion     = "0.2.0"
+	sdkVersion     = "0.2.1"
 	userAgent      = "nahook-go/" + sdkVersion
 	baseDelayMs    = 500
 	maxDelayMs     = 10_000
@@ -420,6 +420,10 @@ type HTTPClient struct {
 	timeout time.Duration
 	retries int
 	http    *http.Client
+	// ownsHTTPClient tracks whether the SDK constructed the *http.Client itself
+	// (vs. receiving a caller-owned one via HTTPClientConfig.HTTPClient). Drives
+	// Close() — we only drain the connection pool when we own the client.
+	ownsHTTPClient bool
 }
 
 // HTTPClientConfig configures the internal HTTP client.
@@ -446,29 +450,45 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	var (
-		httpClient *http.Client
-		timeout    time.Duration
+		httpClient     *http.Client
+		timeout        time.Duration
+		ownsHTTPClient bool
 	)
 	if cfg.HTTPClient != nil {
 		// Caller-owned *http.Client: use verbatim. Caller's Timeout governs
 		// request timeouts and is what TimeoutError.TimeoutMs reports.
 		httpClient = cfg.HTTPClient
 		timeout = cfg.HTTPClient.Timeout
+		ownsHTTPClient = false
 	} else {
 		timeout = cfg.Timeout
 		if timeout == 0 {
 			timeout = DefaultTimeout
 		}
 		httpClient = buildDefaultHTTPClient(timeout)
+		ownsHTTPClient = true
 	}
 
 	return &HTTPClient{
-		token:   cfg.Token,
-		baseURL: baseURL,
-		timeout: timeout,
-		retries: cfg.Retries,
-		http:    httpClient,
+		token:          cfg.Token,
+		baseURL:        baseURL,
+		timeout:        timeout,
+		retries:        cfg.Retries,
+		http:           httpClient,
+		ownsHTTPClient: ownsHTTPClient,
 	}
+}
+
+// Close drains the SDK-owned *http.Transport's idle connection pool. Useful for
+// clean test teardown, graceful shutdown, or explicit reset before recycling
+// long-lived clients. Idempotent. No-op when a caller-owned *http.Client was
+// supplied via HTTPClientConfig.HTTPClient — the caller owns that transport's
+// lifecycle.
+func (c *HTTPClient) Close() {
+	if !c.ownsHTTPClient {
+		return
+	}
+	c.http.CloseIdleConnections()
 }
 
 // HTTPClient returns the underlying *http.Client. Useful for callers who want
