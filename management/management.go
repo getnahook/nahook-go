@@ -5,6 +5,7 @@ package management
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	nahook "github.com/getnahook/nahook-go"
@@ -19,14 +20,17 @@ type Management struct {
 	PortalSessions *PortalSessionsResource
 	Environments   *EnvironmentsResource
 	Deliveries     *DeliveriesResource
+
+	http *nahook.HTTPClient
 }
 
 // Option configures the Management client.
 type Option func(*options)
 
 type options struct {
-	baseURL string
-	timeout time.Duration
+	baseURL    string
+	timeout    time.Duration
+	httpClient *http.Client
 }
 
 // WithBaseURL sets the API base URL.
@@ -34,9 +38,17 @@ func WithBaseURL(url string) Option {
 	return func(o *options) { o.baseURL = url }
 }
 
-// WithTimeout sets the HTTP request timeout.
+// WithTimeout sets the HTTP request timeout. Ignored when WithHTTPClient is
+// also supplied — the caller-owned *http.Client's Timeout governs in that case.
 func WithTimeout(d time.Duration) Option {
 	return func(o *options) { o.timeout = d }
+}
+
+// WithHTTPClient supplies a caller-owned *http.Client to use for all requests.
+// The SDK uses it verbatim and does not mutate it. The caller's HTTPClient.Timeout
+// governs request timeouts and is what TimeoutError.TimeoutMs reports.
+func WithHTTPClient(c *http.Client) Option {
+	return func(o *options) { o.httpClient = c }
 }
 
 // New creates a new Nahook management API client.
@@ -51,20 +63,30 @@ func New(token string, opts ...Option) (*Management, error) {
 		opt(o)
 	}
 
-	http := nahook.NewHTTPClient(nahook.HTTPClientConfig{
-		Token:   token,
-		BaseURL: o.baseURL,
-		Timeout: o.timeout,
-		Retries: 0, // management client never retries
+	httpClient := nahook.NewHTTPClient(nahook.HTTPClientConfig{
+		Token:      token,
+		BaseURL:    o.baseURL,
+		Timeout:    o.timeout,
+		Retries:    0, // management client never retries
+		HTTPClient: o.httpClient,
 	})
 
 	return &Management{
-		Endpoints:      &EndpointsResource{http: http},
-		EventTypes:     &EventTypesResource{http: http},
-		Applications:   &ApplicationsResource{http: http},
-		Subscriptions:  &SubscriptionsResource{http: http},
-		PortalSessions: &PortalSessionsResource{http: http},
-		Environments:   &EnvironmentsResource{http: http},
-		Deliveries:     &DeliveriesResource{http: http},
+		Endpoints:      &EndpointsResource{http: httpClient},
+		EventTypes:     &EventTypesResource{http: httpClient},
+		Applications:   &ApplicationsResource{http: httpClient},
+		Subscriptions:  &SubscriptionsResource{http: httpClient},
+		PortalSessions: &PortalSessionsResource{http: httpClient},
+		Environments:   &EnvironmentsResource{http: httpClient},
+		Deliveries:     &DeliveriesResource{http: httpClient},
+
+		http: httpClient,
 	}, nil
+}
+
+// HTTPClient returns the underlying *http.Client used by the SDK. Useful for
+// introspection or attaching instrumentation. Mutating the returned client
+// affects all subsequent SDK requests.
+func (m *Management) HTTPClient() *http.Client {
+	return m.http.HTTPClient()
 }

@@ -111,7 +111,7 @@ func TestHTTPClient_Request_Success(t *testing.T) {
 		if r.Header.Get("Accept") != "application/json" {
 			t.Errorf("unexpected accept: %s", r.Header.Get("Accept"))
 		}
-		if r.Header.Get("User-Agent") != "nahook-go/0.1.1" {
+		if r.Header.Get("User-Agent") != "nahook-go/0.2.0" {
 			t.Errorf("unexpected user-agent: %s", r.Header.Get("User-Agent"))
 		}
 		json.NewEncoder(w).Encode(map[string]string{"key": "value"})
