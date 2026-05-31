@@ -44,9 +44,10 @@ func WithRetries(n int) Option {
 
 // WithHTTPClient supplies a caller-owned *http.Client to use for all requests.
 // The SDK uses it verbatim and does not mutate it. The caller's HTTPClient.Timeout
-// governs request timeouts and is what TimeoutError.TimeoutMs reports. Pair this
-// with a *http.Transport tuned for your workload, OpenTelemetry round-trippers,
-// mTLS, or any custom RoundTripper pipeline.
+// governs request timeouts and is what TimeoutError.TimeoutMs reports — note that
+// Go's zero-value Timeout means "no timeout", which propagates to TimeoutMs as 0.
+// Pair this with a *http.Transport tuned for your workload, OpenTelemetry
+// round-trippers, mTLS, or any custom RoundTripper pipeline.
 func WithHTTPClient(c *http.Client) Option {
 	return func(o *options) { o.httpClient = c }
 }
