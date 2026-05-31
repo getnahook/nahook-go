@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -21,7 +23,7 @@ const (
 	DefaultBaseURL = "https://api.nahook.com"
 	DefaultTimeout = 30 * time.Second
 	DefaultRetries = 0
-	sdkVersion     = "0.1.1"
+	sdkVersion     = "0.2.0"
 	userAgent      = "nahook-go/" + sdkVersion
 	baseDelayMs    = 500
 	maxDelayMs     = 10_000
@@ -427,6 +429,11 @@ type HTTPClientConfig struct {
 	BaseURL string
 	Timeout time.Duration
 	Retries int
+	// HTTPClient, when non-nil, is used verbatim and not mutated. The caller's
+	// HTTPClient.Timeout governs request timeouts and is what TimeoutError.TimeoutMs
+	// reports. When nil, the SDK builds a *http.Client with a tuned *http.Transport
+	// (HTTP/2, TCP keep-alive, MaxIdleConnsPerHost = 50).
+	HTTPClient *http.Client
 }
 
 // NewHTTPClient creates a new internal HTTP client.
@@ -438,9 +445,21 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = DefaultTimeout
+	var (
+		httpClient *http.Client
+		timeout    time.Duration
+	)
+	if cfg.HTTPClient != nil {
+		// Caller-owned *http.Client: use verbatim. Caller's Timeout governs
+		// request timeouts and is what TimeoutError.TimeoutMs reports.
+		httpClient = cfg.HTTPClient
+		timeout = cfg.HTTPClient.Timeout
+	} else {
+		timeout = cfg.Timeout
+		if timeout == 0 {
+			timeout = DefaultTimeout
+		}
+		httpClient = buildDefaultHTTPClient(timeout)
 	}
 
 	return &HTTPClient{
@@ -448,7 +467,39 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 		baseURL: baseURL,
 		timeout: timeout,
 		retries: cfg.Retries,
-		http:    &http.Client{Timeout: timeout},
+		http:    httpClient,
+	}
+}
+
+// HTTPClient returns the underlying *http.Client. Useful for callers who want
+// to introspect or attach instrumentation. Mutating the returned client affects
+// all subsequent SDK requests.
+func (c *HTTPClient) HTTPClient() *http.Client {
+	return c.http
+}
+
+// buildDefaultHTTPClient constructs the SDK's default *http.Client backed by a
+// tuned *http.Transport. The pool sizing (MaxIdleConnsPerHost = 50) is sized
+// for moderate fan-out — go's net/http default of 2 idle conns per host churns
+// connections aggressively during bursts. ForceAttemptHTTP2 + 30s TCP keep-alive
+// are made explicit so the contract is visible at a glance.
+func buildDefaultHTTPClient(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   50,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
 	}
 }
 
@@ -543,7 +594,12 @@ func (c *HTTPClient) executeWithRetry(ctx context.Context, opts RequestOptions) 
 
 		resp, err := c.http.Do(req)
 		if err != nil {
-			if ctx.Err() != nil {
+			// Two distinct timeout sources collapse to TimeoutError:
+			//   1. caller cancelled / their ctx deadline expired (ctx.Err() != nil)
+			//   2. http.Client.Timeout fired — does NOT cancel the outer ctx, but
+			//      surfaces a wrapped context.DeadlineExceeded inside the returned err.
+			// Anything else is a transport-level failure → NetworkError.
+			if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
 				lastErr = &TimeoutError{TimeoutMs: int(c.timeout.Milliseconds())}
 			} else {
 				lastErr = &NetworkError{Cause: err}

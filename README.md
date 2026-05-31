@@ -507,6 +507,7 @@ result, err := c.Send(ctx, "ep_123", nahook.SendOptions{
 | `WithBaseURL(url)` | `https://api.nahook.com` | API base URL |
 | `WithTimeout(d)` | 30s | HTTP request timeout |
 | `WithRetries(n)` | 0 | Max retries for retryable errors (5xx, 429, network) |
+| `WithHTTPClient(c)` | tuned default | Caller-owned `*http.Client` (see below) |
 
 ### Management Options
 
@@ -514,8 +515,57 @@ result, err := c.Send(ctx, "ep_123", nahook.SendOptions{
 |--------|---------|-------------|
 | `WithBaseURL(url)` | `https://api.nahook.com` | API base URL |
 | `WithTimeout(d)` | 30s | HTTP request timeout |
+| `WithHTTPClient(c)` | tuned default | Caller-owned `*http.Client` (see below) |
 
 The management client does not support retries.
+
+### Advanced HTTP configuration
+
+The SDK ships with a `*http.Client` backed by a tuned `*http.Transport`:
+
+| Setting | Value |
+|---|---|
+| `MaxIdleConnsPerHost` | 50 |
+| `MaxIdleConns` | 100 |
+| `IdleConnTimeout` | 90s |
+| `ForceAttemptHTTP2` | true |
+| `Dialer.KeepAlive` | 30s |
+
+Go's `http.DefaultTransport` allows only 2 idle conns per host — fine for a script, expensive for a service that fans out webhooks in bursts (every send tears down and re-opens a connection). The tuned defaults are sized for moderate concurrent throughput.
+
+For full control, supply your own `*http.Client`:
+
+```go
+import (
+    "net/http"
+    "time"
+
+    "github.com/getnahook/nahook-go/client"
+)
+
+custom := &http.Client{
+    Timeout: 15 * time.Second,
+    Transport: &http.Transport{
+        // Your own pool sizing, mTLS, proxy, custom RoundTripper, etc.
+        MaxIdleConnsPerHost: 200,
+        IdleConnTimeout:     60 * time.Second,
+        ForceAttemptHTTP2:   true,
+    },
+}
+
+c, err := client.New("nhk_us_...",
+    client.WithHTTPClient(custom),
+)
+```
+
+When `WithHTTPClient` is supplied:
+
+- The SDK uses your client verbatim and does **not** mutate it (good for shared clients).
+- Your `http.Client.Timeout` governs request timeouts and is what `TimeoutError.TimeoutMs` reports.
+- `WithTimeout` is silently ignored — your client's `Timeout` wins.
+- You own its lifecycle (the SDK has no `Close`/`Dispose` for it).
+
+Wrap your `http.RoundTripper` to plug in OpenTelemetry, Datadog, custom retry logic, or auth refresh — the SDK only ever calls `Do(req)` on the supplied client, so any standard middleware composes cleanly. The same `WithHTTPClient` option is available on the management client.
 
 ### Retry Behavior
 

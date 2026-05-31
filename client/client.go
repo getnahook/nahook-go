@@ -4,6 +4,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	nahook "github.com/getnahook/nahook-go"
@@ -19,9 +20,10 @@ type Client struct {
 type Option func(*options)
 
 type options struct {
-	baseURL string
-	timeout time.Duration
-	retries int
+	baseURL    string
+	timeout    time.Duration
+	retries    int
+	httpClient *http.Client
 }
 
 // WithBaseURL sets the API base URL.
@@ -29,7 +31,8 @@ func WithBaseURL(url string) Option {
 	return func(o *options) { o.baseURL = url }
 }
 
-// WithTimeout sets the HTTP request timeout.
+// WithTimeout sets the HTTP request timeout. Ignored when WithHTTPClient is
+// also supplied — the caller-owned *http.Client's Timeout governs in that case.
 func WithTimeout(d time.Duration) Option {
 	return func(o *options) { o.timeout = d }
 }
@@ -37,6 +40,15 @@ func WithTimeout(d time.Duration) Option {
 // WithRetries sets the maximum number of retries for retryable errors.
 func WithRetries(n int) Option {
 	return func(o *options) { o.retries = n }
+}
+
+// WithHTTPClient supplies a caller-owned *http.Client to use for all requests.
+// The SDK uses it verbatim and does not mutate it. The caller's HTTPClient.Timeout
+// governs request timeouts and is what TimeoutError.TimeoutMs reports. Pair this
+// with a *http.Transport tuned for your workload, OpenTelemetry round-trippers,
+// mTLS, or any custom RoundTripper pipeline.
+func WithHTTPClient(c *http.Client) Option {
+	return func(o *options) { o.httpClient = c }
 }
 
 // New creates a new Nahook ingestion client.
@@ -53,12 +65,20 @@ func New(apiKey string, opts ...Option) (*Client, error) {
 
 	return &Client{
 		http: nahook.NewHTTPClient(nahook.HTTPClientConfig{
-			Token:   apiKey,
-			BaseURL: o.baseURL,
-			Timeout: o.timeout,
-			Retries: o.retries,
+			Token:      apiKey,
+			BaseURL:    o.baseURL,
+			Timeout:    o.timeout,
+			Retries:    o.retries,
+			HTTPClient: o.httpClient,
 		}),
 	}, nil
+}
+
+// HTTPClient returns the underlying *http.Client used by the SDK. Useful for
+// introspection or attaching instrumentation. Mutating the returned client
+// affects all subsequent SDK requests.
+func (c *Client) HTTPClient() *http.Client {
+	return c.http.HTTPClient()
 }
 
 // Send sends a payload to a specific endpoint.
