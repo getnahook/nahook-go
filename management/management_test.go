@@ -408,6 +408,173 @@ func TestApplications_Update(t *testing.T) {
 	}
 }
 
+func TestApplications_Create_MaxEndpoints(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["maxEndpoints"] != float64(2) {
+			t.Errorf("expected maxEndpoints 2, got %v", body["maxEndpoints"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_new", "name": "My App", "metadata": map[string]string{},
+			"maxEndpoints": 2, "showEventTypes": true,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	max := 2
+	result, err := mgmt.Applications.Create(context.Background(), "ws_123", nahook.CreateApplicationOptions{
+		Name:         "My App",
+		MaxEndpoints: &max,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.MaxEndpoints == nil || *result.MaxEndpoints != 2 {
+		t.Errorf("expected MaxEndpoints 2, got %v", result.MaxEndpoints)
+	}
+}
+
+func TestApplications_Create_ShowEventTypesFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["showEventTypes"] != false {
+			t.Errorf("expected showEventTypes false, got %v", body["showEventTypes"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_new", "name": "My App", "metadata": map[string]string{},
+			"maxEndpoints": nil, "showEventTypes": false,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	show := false
+	result, err := mgmt.Applications.Create(context.Background(), "ws_123", nahook.CreateApplicationOptions{
+		Name:           "My App",
+		ShowEventTypes: &show,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ShowEventTypes != false {
+		t.Errorf("expected ShowEventTypes false, got %v", result.ShowEventTypes)
+	}
+}
+
+func TestApplications_Create_OmitsUnsetCapFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if _, present := body["maxEndpoints"]; present {
+			t.Errorf("expected maxEndpoints omitted, got %v", body["maxEndpoints"])
+		}
+		if _, present := body["showEventTypes"]; present {
+			t.Errorf("expected showEventTypes omitted, got %v", body["showEventTypes"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_new", "name": "My App", "metadata": map[string]string{},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	_, err := mgmt.Applications.Create(context.Background(), "ws_123", nahook.CreateApplicationOptions{Name: "My App"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplications_Update_MaxEndpointsExplicitNull(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		v, present := body["maxEndpoints"]
+		if !present {
+			t.Error("expected maxEndpoints present as explicit null, got omitted")
+		}
+		if v != nil {
+			t.Errorf("expected maxEndpoints null, got %v", v)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_1", "name": "My App", "metadata": map[string]string{},
+			"maxEndpoints": nil, "showEventTypes": true,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Applications.Update(context.Background(), "ws_123", "app_1", nahook.UpdateApplicationOptions{
+		MaxEndpoints: nahook.IntNull(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.MaxEndpoints != nil {
+		t.Errorf("expected MaxEndpoints nil, got %v", *result.MaxEndpoints)
+	}
+}
+
+func TestApplications_Update_MaxEndpointsOmittedWhenNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if _, present := body["maxEndpoints"]; present {
+			t.Errorf("expected maxEndpoints omitted, got %v", body["maxEndpoints"])
+		}
+		if _, present := body["showEventTypes"]; present {
+			t.Errorf("expected showEventTypes omitted, got %v", body["showEventTypes"])
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_1", "name": "Renamed", "metadata": map[string]string{},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	name := "Renamed"
+	_, err := mgmt.Applications.Update(context.Background(), "ws_123", "app_1", nahook.UpdateApplicationOptions{
+		Name: &name,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplications_Update_MaxEndpointsSetValue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["maxEndpoints"] != float64(5) {
+			t.Errorf("expected maxEndpoints 5, got %v", body["maxEndpoints"])
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_1", "name": "My App", "metadata": map[string]string{},
+			"maxEndpoints": 5, "showEventTypes": false,
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Applications.Update(context.Background(), "ws_123", "app_1", nahook.UpdateApplicationOptions{
+		MaxEndpoints: nahook.IntValue(5),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.MaxEndpoints == nil || *result.MaxEndpoints != 5 {
+		t.Errorf("expected MaxEndpoints 5, got %v", result.MaxEndpoints)
+	}
+	if result.ShowEventTypes != false {
+		t.Errorf("expected ShowEventTypes false, got %v", result.ShowEventTypes)
+	}
+}
+
 func TestApplications_Delete(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assertMethod(t, r, "DELETE")

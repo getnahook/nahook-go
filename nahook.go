@@ -203,8 +203,14 @@ type Application struct {
 	ExternalID *string           `json:"externalId"`
 	Name       string            `json:"name"`
 	Metadata   map[string]string `json:"metadata"`
-	CreatedAt  string            `json:"createdAt"`
-	UpdatedAt  string            `json:"updatedAt"`
+	// MaxEndpoints is the maximum number of endpoints this application may
+	// have (disabled endpoints count). nil means unlimited.
+	MaxEndpoints *int `json:"maxEndpoints"`
+	// ShowEventTypes reports whether the Developer Portal exposes the
+	// event-type catalog to this application.
+	ShowEventTypes bool   `json:"showEventTypes"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 // Subscription represents an event type subscription on an endpoint.
@@ -276,12 +282,62 @@ type CreateApplicationOptions struct {
 	Name       string            `json:"name"`
 	ExternalID string            `json:"externalId,omitempty"`
 	Metadata   map[string]string `json:"metadata,omitempty"`
+	// MaxEndpoints caps how many endpoints this application may have
+	// (disabled endpoints count). 0 makes the application read-only.
+	// nil (omitted) means unlimited.
+	MaxEndpoints *int `json:"maxEndpoints,omitempty"`
+	// ShowEventTypes controls whether the Developer Portal exposes the
+	// event-type catalog. nil (omitted) defaults to true.
+	ShowEventTypes *bool `json:"showEventTypes,omitempty"`
 }
 
 // UpdateApplicationOptions configures an application update.
 type UpdateApplicationOptions struct {
 	Name     *string           `json:"name,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// MaxEndpoints is tri-state: leave nil to keep the current cap,
+	// IntNull() to clear it (unlimited), or IntValue(n) to set it.
+	MaxEndpoints *NullableInt `json:"maxEndpoints,omitempty"`
+	// ShowEventTypes is omitted (unchanged) when nil.
+	ShowEventTypes *bool `json:"showEventTypes,omitempty"`
+}
+
+// NullableInt is a JSON field that marshals as either a number or an explicit
+// null. PATCH fields typed *NullableInt are tri-state: a nil pointer is
+// omitted from the body entirely (leave unchanged), IntNull() marshals as
+// null (clear), and IntValue(n) marshals as n (set).
+type NullableInt struct {
+	// Value is the number to send; nil marshals as JSON null.
+	Value *int
+}
+
+// IntValue returns a NullableInt carrying v.
+func IntValue(v int) *NullableInt { return &NullableInt{Value: &v} }
+
+// IntNull returns a NullableInt that marshals as explicit JSON null — on
+// UpdateApplicationOptions.MaxEndpoints this clears the cap (unlimited).
+func IntNull() *NullableInt { return &NullableInt{} }
+
+// MarshalJSON implements json.Marshaler.
+func (n NullableInt) MarshalJSON() ([]byte, error) {
+	if n.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*n.Value)
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (n *NullableInt) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		n.Value = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	n.Value = &v
+	return nil
 }
 
 // CreateSubscriptionOptions configures a new subscription (bulk).
