@@ -213,6 +213,18 @@ type Application struct {
 	UpdatedAt      string `json:"updatedAt"`
 }
 
+// UnmarshalJSON applies the server default (true) to ShowEventTypes when the
+// field is absent from a response, matching the other SDKs' fallback.
+func (a *Application) UnmarshalJSON(data []byte) error {
+	type alias Application
+	aux := alias{ShowEventTypes: true}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*a = Application(aux)
+	return nil
+}
+
 // Subscription represents an event type subscription on an endpoint.
 type Subscription struct {
 	ID            string `json:"id"`

@@ -546,6 +546,28 @@ func TestApplications_Update_MaxEndpointsOmittedWhenNil(t *testing.T) {
 	}
 }
 
+func TestApplications_Get_DefaultsShowEventTypesWhenAbsent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Response without the cap fields — older/cached payload shape.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "app_1", "name": "My App", "metadata": map[string]string{},
+		})
+	}))
+	defer srv.Close()
+
+	mgmt := newTestClient(t, srv.URL)
+	result, err := mgmt.Applications.Get(context.Background(), "ws_123", "app_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.MaxEndpoints != nil {
+		t.Errorf("expected MaxEndpoints nil, got %v", *result.MaxEndpoints)
+	}
+	if !result.ShowEventTypes {
+		t.Error("expected ShowEventTypes to default to true when absent (server default)")
+	}
+}
+
 func TestApplications_Update_MaxEndpointsSetValue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
