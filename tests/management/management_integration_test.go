@@ -654,6 +654,141 @@ func deliveryIDs(ds []nahook.Delivery) []string {
 	return ids
 }
 
+func intPtr(i int) *int    { return &i }
+func boolPtr(b bool) *bool { return &b }
+
+func TestApplicationMaxEndpointsCapLifecycle(t *testing.T) {
+	client, wsID := setupClient(t)
+	ctx := context.Background()
+	name := uniqueName()
+
+	// I1: create with an explicit cap of 2 and the event-type catalog hidden.
+	app, err := client.Applications.Create(ctx, wsID, nahook.CreateApplicationOptions{
+		Name:           name,
+		MaxEndpoints:   intPtr(2),
+		ShowEventTypes: boolPtr(false),
+	})
+	if err != nil {
+		t.Fatalf("Create application: %v", err)
+	}
+	var createdEndpoints []string
+	defer func() {
+		for _, epID := range createdEndpoints {
+			_ = client.Endpoints.Delete(ctx, wsID, epID)
+		}
+		_ = client.Applications.Delete(ctx, wsID, app.ID)
+	}()
+	if app.MaxEndpoints == nil || *app.MaxEndpoints != 2 {
+		t.Fatalf("expected created maxEndpoints 2, got %v", app.MaxEndpoints)
+	}
+	if app.ShowEventTypes {
+		t.Fatal("expected created showEventTypes false, got true")
+	}
+	got, err := client.Applications.Get(ctx, wsID, app.ID)
+	if err != nil {
+		t.Fatalf("Get application after create: %v", err)
+	}
+	if got.MaxEndpoints == nil || *got.MaxEndpoints != 2 {
+		t.Fatalf("Get after create: expected maxEndpoints 2, got %v", got.MaxEndpoints)
+	}
+	if got.ShowEventTypes {
+		t.Fatal("Get after create: expected showEventTypes false, got true")
+	}
+
+	// I2: tighten the cap to 1 and re-enable the event-type catalog.
+	updated, err := client.Applications.Update(ctx, wsID, app.ID, nahook.UpdateApplicationOptions{
+		MaxEndpoints:   nahook.IntValue(1),
+		ShowEventTypes: boolPtr(true),
+	})
+	if err != nil {
+		t.Fatalf("Update application (cap=1): %v", err)
+	}
+	if updated.MaxEndpoints == nil || *updated.MaxEndpoints != 1 {
+		t.Fatalf("Update echo: expected maxEndpoints 1, got %v", updated.MaxEndpoints)
+	}
+	if !updated.ShowEventTypes {
+		t.Fatal("Update echo: expected showEventTypes true, got false")
+	}
+	got, err = client.Applications.Get(ctx, wsID, app.ID)
+	if err != nil {
+		t.Fatalf("Get application after update: %v", err)
+	}
+	if got.MaxEndpoints == nil || *got.MaxEndpoints != 1 {
+		t.Fatalf("Get after update: expected maxEndpoints 1, got %v", got.MaxEndpoints)
+	}
+	if !got.ShowEventTypes {
+		t.Fatal("Get after update: expected showEventTypes true, got false")
+	}
+
+	// I3: first endpoint fits under the cap; the second must be rejected.
+	ep1, err := client.Applications.CreateEndpoint(ctx, wsID, app.ID, nahook.CreateEndpointOptions{
+		URL: "https://httpbin.org/post",
+	})
+	if err != nil {
+		t.Fatalf("CreateEndpoint (first, under cap): %v", err)
+	}
+	createdEndpoints = append(createdEndpoints, ep1.ID)
+
+	_, err = client.Applications.CreateEndpoint(ctx, wsID, app.ID, nahook.CreateEndpointOptions{
+		URL: "https://httpbin.org/post",
+	})
+	if err == nil {
+		t.Fatal("expected error creating endpoint over cap, got nil")
+	}
+	var apiErr *nahook.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError over cap, got %T: %v", err, err)
+	}
+	if apiErr.Status != 403 {
+		t.Fatalf("expected status 403 over cap, got %d", apiErr.Status)
+	}
+	if apiErr.Code != "application_endpoint_limit_reached" {
+		t.Fatalf("expected code application_endpoint_limit_reached, got %q", apiErr.Code)
+	}
+
+	// I4: disabled endpoints still count against the cap.
+	_, err = client.Endpoints.Update(ctx, wsID, ep1.ID, nahook.UpdateEndpointOptions{
+		IsActive: boolPtr(false),
+	})
+	if err != nil {
+		t.Fatalf("Update endpoint (disable): %v", err)
+	}
+	_, err = client.Applications.CreateEndpoint(ctx, wsID, app.ID, nahook.CreateEndpointOptions{
+		URL: "https://httpbin.org/post",
+	})
+	if err == nil {
+		t.Fatal("expected error creating endpoint with disabled endpoint at cap, got nil")
+	}
+	apiErr = nil
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError with disabled endpoint at cap, got %T: %v", err, err)
+	}
+	if apiErr.Status != 403 {
+		t.Fatalf("expected status 403 with disabled endpoint at cap, got %d", apiErr.Status)
+	}
+	if apiErr.Code != "application_endpoint_limit_reached" {
+		t.Fatalf("expected code application_endpoint_limit_reached, got %q", apiErr.Code)
+	}
+
+	// I5: clearing the cap with explicit null lifts the limit.
+	updated, err = client.Applications.Update(ctx, wsID, app.ID, nahook.UpdateApplicationOptions{
+		MaxEndpoints: nahook.IntNull(),
+	})
+	if err != nil {
+		t.Fatalf("Update application (clear cap): %v", err)
+	}
+	if updated.MaxEndpoints != nil {
+		t.Fatalf("expected maxEndpoints nil after clearing cap, got %d", *updated.MaxEndpoints)
+	}
+	ep2, err := client.Applications.CreateEndpoint(ctx, wsID, app.ID, nahook.CreateEndpointOptions{
+		URL: "https://httpbin.org/post",
+	})
+	if err != nil {
+		t.Fatalf("CreateEndpoint after clearing cap: %v", err)
+	}
+	createdEndpoints = append(createdEndpoints, ep2.ID)
+}
+
 func TestAuthError(t *testing.T) {
 	apiURL := os.Getenv("NAHOOK_TEST_API_URL")
 	wsID := os.Getenv("NAHOOK_TEST_WORKSPACE_ID")
