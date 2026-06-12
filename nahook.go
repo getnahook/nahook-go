@@ -23,7 +23,7 @@ const (
 	DefaultBaseURL = "https://api.nahook.com"
 	DefaultTimeout = 30 * time.Second
 	DefaultRetries = 0
-	sdkVersion     = "0.2.1"
+	sdkVersion     = "0.3.0"
 	userAgent      = "nahook-go/" + sdkVersion
 	baseDelayMs    = 500
 	maxDelayMs     = 10_000
